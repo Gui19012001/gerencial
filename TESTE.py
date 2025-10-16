@@ -177,7 +177,8 @@ def painel_dashboard(modo_tv=False):
 def main():
     st.set_page_config(page_title="Dashboard Produção", layout="wide")
 
-    query_params = st.query_params
+    # --- Detecção de modo TV via parâmetro de URL ---
+    query_params = st.experimental_get_query_params()
     modo_tv = query_params.get("view", [""])[0].lower() == "tv"
 
     if modo_tv:
@@ -190,13 +191,16 @@ def main():
         </style>
         """, unsafe_allow_html=True)
 
+        # Auto refresh a cada 1 minuto (60000 ms)
         if AUTORELOAD_AVAILABLE:
             st_autorefresh(interval=60000, key="tv_refresh")
 
         st.markdown("<h1>📺 Painel de Produção - Modo TV</h1>", unsafe_allow_html=True)
         painel_dashboard(modo_tv=True)
+
         hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
         st.markdown(f"<p style='color:#ccc;text-align:center;'>Atualizado às <b>{hora}</b></p>", unsafe_allow_html=True)
+
     else:
         st.title("📊 Dashboard de Produção")
         painel_dashboard()
