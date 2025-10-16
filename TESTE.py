@@ -37,7 +37,6 @@ TZ = pytz.timezone("America/Sao_Paulo")
 # Funções Supabase
 # ==============================
 def carregar_checklists(force_reload=False):
-    """Carrega checklists do Supabase. Force reload ignora o cache."""
     if not force_reload:
         @st.cache_data(ttl=60)
         def _carregar():
@@ -63,7 +62,6 @@ def _load_checklists():
     return df
 
 def carregar_apontamentos(force_reload=False):
-    """Carrega apontamentos do Supabase. Force reload ignora o cache."""
     if not force_reload:
         @st.cache_data(ttl=60)
         def _carregar():
@@ -82,17 +80,14 @@ def _load_apontamentos():
 # ==============================
 # Painel Dashboard
 # ==============================
-def painel_dashboard(modo_tv=False):
+def painel_dashboard():
     hoje = datetime.datetime.now(TZ).date()
 
-    if not modo_tv:
-        st.sidebar.markdown("### Filtro de Data")
-        data_inicio = st.sidebar.date_input("Data Início", hoje)
-        data_fim = st.sidebar.date_input("Data Fim", hoje)
-        force_reload = False
-    else:
-        data_inicio = data_fim = hoje
-        force_reload = True  # Força recarga dos dados no modo TV
+    # Filtro de data no sidebar
+    st.sidebar.markdown("### Filtro de Data")
+    data_inicio = st.sidebar.date_input("Data Início", hoje)
+    data_fim = st.sidebar.date_input("Data Fim", hoje)
+    force_reload = False
 
     df_apont = carregar_apontamentos(force_reload=force_reload)
     df_checks = carregar_checklists(force_reload=force_reload)
@@ -149,8 +144,8 @@ def painel_dashboard(modo_tv=False):
 
     # ======= Cartões Resumo =======
     col1, col2, col3 = st.columns(3)
-    altura = "220px" if not modo_tv else "280px"
-    fonte = "18px" if not modo_tv else "28px"
+    altura = "220px"
+    fonte = "18px"
 
     with col1:
         st.markdown(f"""
@@ -170,57 +165,41 @@ def painel_dashboard(modo_tv=False):
         <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
 
     # ======= Pareto NC =======
-    if not modo_tv:
-        st.markdown("### 📊 Pareto das Não Conformidades")
-        df_nc = []
-        if not df_checks_filtrado.empty:
-            for _, row in df_checks_filtrado.iterrows():
-                if row["status"] == "Não Conforme":
-                    df_nc.append({"item": row["item"], "numero_serie": row["numero_serie"]})
-        df_nc = pd.DataFrame(df_nc)
-        if not df_nc.empty:
-            pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
-            pareto.columns = ["Item", "Quantidade"]
-            pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=pareto["Item"], y=pareto["Quantidade"], name="NC"))
-            fig.add_trace(go.Scatter(x=pareto["Item"], y=pareto["%"], mode="lines+markers", name="% Acumulado", yaxis="y2"))
-            fig.update_layout(yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 110]))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Nenhuma não conformidade registrada.")
+    st.markdown("### 📊 Pareto das Não Conformidades")
+    df_nc = []
+    if not df_checks_filtrado.empty:
+        for _, row in df_checks_filtrado.iterrows():
+            if row["status"] == "Não Conforme":
+                df_nc.append({"item": row["item"], "numero_serie": row["numero_serie"]})
+    df_nc = pd.DataFrame(df_nc)
+    if not df_nc.empty:
+        pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
+        pareto.columns = ["Item", "Quantidade"]
+        pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=pareto["Item"], y=pareto["Quantidade"], name="NC"))
+        fig.add_trace(go.Scatter(x=pareto["Item"], y=pareto["%"], mode="lines+markers", name="% Acumulado", yaxis="y2"))
+        fig.update_layout(yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 110]))
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Nenhuma não conformidade registrada.")
 
 # ==============================
-# Modo TV e Principal
+# Main
 # ==============================
 def main():
     st.set_page_config(page_title="Dashboard Produção", layout="wide")
 
-    query_params = st.query_params
-    modo_tv = query_params.get("view", "").lower() == "tv"
+    # Atualiza automaticamente a cada 1 minuto
+    if AUTORELOAD_AVAILABLE:
+        st_autorefresh(interval=60000, key="dashboard_refresh")
 
-    if modo_tv:
-        st.markdown("""
-        <style>
-        #MainMenu, header, footer, .stSidebar {display: none;}
-        html, body, [class*="block-container"] {padding: 0; margin: 0;}
-        h1, h2, h3, p {color: white; text-align: center;}
-        body {background-color: #0e1117;}
-        </style>
-        """, unsafe_allow_html=True)
+    st.title("📊 Dashboard de Produção")
+    painel_dashboard()
 
-        # Atualiza automaticamente a cada 1 minuto
-        if AUTORELOAD_AVAILABLE:
-            st_autorefresh(interval=60000, key="tv_refresh")
-
-        st.markdown("<h1>📺 Painel de Produção - Modo TV</h1>", unsafe_allow_html=True)
-        painel_dashboard(modo_tv=True)
-        hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
-        st.markdown(f"<p style='color:#ccc;text-align:center;'>Atualizado às <b>{hora}</b></p>", unsafe_allow_html=True)
-    else:
-        st.title("📊 Dashboard de Produção")
-        painel_dashboard()
+    # Hora da última atualização
+    hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
+    st.markdown(f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
-
