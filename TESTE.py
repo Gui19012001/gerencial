@@ -280,6 +280,7 @@ def relatorio_apontamentos_por_op():
 def main():
     st.set_page_config(page_title="Dashboard Produção", layout="wide")
 
+    # Atualiza automaticamente a cada 10 segundos
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=10000, key="dashboard_refresh")
 
@@ -287,13 +288,14 @@ def main():
     st.sidebar.title("📌 Navegação")
     menu = st.sidebar.selectbox("Selecione a página", ["Dashboard", "Apontamento por OP"])
 
-    st.title("📊 Dashboard de Produção")
-
+    # Título da página e chamada das funções
     if menu == "Dashboard":
+        st.title("📊 Dashboard de Produção")
         painel_dashboard()
     elif menu == "Apontamento por OP":
+        st.title("📦 Apontamento por OP")
         relatorio_apontamentos_por_op()
 
-    # Rodapé de atualização
+    # Rodapé com hora da última atualização
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
     st.markdown(f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>", unsafe_allow_html=True)
