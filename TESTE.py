@@ -142,8 +142,15 @@ def painel_dashboard():
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
+    # ======= Cálculo do OEE =======
+    meta_total = sum(meta_hora.values())  # 188
+    performance = (total_lidos / meta_total * 100) if meta_total > 0 else 0
+    qualidade = aprovacao_perc  # já em %
+    disponibilidade = 100
+    oee = (performance/100) * (qualidade/100) * (disponibilidade/100) * 100
+
     # ======= Cartões Resumo =======
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     altura = "220px"
     fonte = "18px"
 
@@ -163,6 +170,12 @@ def painel_dashboard():
         st.markdown(f"""
         <div style="background-color:{cor};height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
+    with col4:
+        st.markdown(f"""
+        <div style="background-color:#805AD5;height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">OEE</h3><h1 style="color:white;font-size:{fonte}">{oee:.2f}%</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">Perf: {performance:.2f}% | Qualid: {qualidade:.2f}%</p>
+        </div>""", unsafe_allow_html=True)
 
     # ======= Pareto NC =======
     st.markdown("### 📊 Pareto das Não Conformidades")
@@ -183,6 +196,7 @@ def painel_dashboard():
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhuma não conformidade registrada.")
+
 
 # ==============================
 # Main
