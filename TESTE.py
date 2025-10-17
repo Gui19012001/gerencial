@@ -80,122 +80,81 @@ def _load_apontamentos():
 # ==============================
 # Painel Dashboard
 # ==============================
+
 def painel_dashboard():
-    hoje = datetime.datetime.now(TZ).date()
+    st.markdown("## 📊 Painel de Produção")
 
-    # Filtro de data no sidebar
-    st.sidebar.markdown("### Filtro de Data")
-    data_inicio = st.sidebar.date_input("Data Início", hoje)
-    data_fim = st.sidebar.date_input("Data Fim", hoje)
-    force_reload = False
+    # ================== CÁLCULOS ==================
+    meta_total = sum(meta_hora.values())  # Exemplo: 188
+    total_lidos = len(df_apont)  # Produzido
+    aprovacao_perc = (df_apont['aprovado'].sum() / total_lidos * 100) if total_lidos > 0 else 0
 
-    df_apont = carregar_apontamentos(force_reload=force_reload)
-    df_checks = carregar_checklists(force_reload=force_reload)
-
-    if not df_apont.empty:
-        df_apont = df_apont[(df_apont["data_hora"].dt.date >= data_inicio) & (df_apont["data_hora"].dt.date <= data_fim)]
-    if not df_checks.empty:
-        df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
-
-    # ======= Cálculo de Atraso =======
-    meta_hora = {
-        datetime.time(6,0):22, datetime.time(7,0):22, datetime.time(8,0):22,
-        datetime.time(9,0):22, datetime.time(10,0):22, datetime.time(11,0):4,
-        datetime.time(12,0):18, datetime.time(13,0):22, datetime.time(14,0):22, datetime.time(15,0):12
-    }
-    total_lidos = len(df_apont)
-    meta_acumulada = 0
-    hora_atual = datetime.datetime.now(TZ)
-    for h, m in meta_hora.items():
-        horario_fechado = TZ.localize(datetime.datetime.combine(hoje, h)) + datetime.timedelta(hours=1)
-        if hora_atual >= horario_fechado:
-            meta_acumulada += m
-    atraso = max(meta_acumulada - total_lidos, 0)
-
-    # ======= % Aprovação =======
-    if not df_checks.empty and not df_apont.empty:
-        df_checks_filtrado = df_checks[df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())]
-    else:
-        df_checks_filtrado = pd.DataFrame()
-
-    aprovacao_perc = total_inspecionado = total_reprovados = 0
-    if not df_checks_filtrado.empty:
-        series_with_checks = df_checks_filtrado["numero_serie"].unique()
-        aprovados = 0
-        total_reprovados = 0
-        for serie in series_with_checks:
-            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-            teve_reinspecao = (checks["reinspecao"] == "Sim").any()
-            aprovado = False if teve_reinspecao else (checks.tail(1).iloc[0]["produto_reprovado"] == "Não")
-            if aprovado:
-                aprovados += 1
-            else:
-                total_reprovados += 1
-        total_inspecionado = len(series_with_checks)
-        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
-
-    # ======= Esteira / Rodagem =======
-    total_esteira = total_rodagem = 0
-    if not df_apont.empty:
-        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
-        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)]
-        total_esteira = len(df_esteira)
-        total_rodagem = len(df_rodagem)
-
-    # ======= Cálculo do OEE =======
-    meta_total = sum(meta_hora.values())  # 188
     performance = (total_lidos / meta_total * 100) if meta_total > 0 else 0
-    qualidade = aprovacao_perc  # já em %
+    qualidade = aprovacao_perc
     disponibilidade = 100
     oee = (performance/100) * (qualidade/100) * (disponibilidade/100) * 100
 
-    # ======= Cartões Resumo =======
-    col1, col2, col3, col4 = st.columns(4)
+    # ================== LAYOUT ==================
+    col1, col2, col3, col4 = st.columns([1,1,1,2])  # OEE maior para o gauge
     altura = "220px"
     fonte = "18px"
 
+    # ---------- CARD: Total Produzido ----------
     with col1:
         st.markdown(f"""
-        <div style="background-color:#2b6cb0;height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3><h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
-        <p style="color:#E3E3E3;font-size:{fonte}">Esteira: {total_esteira} | Rodagem: {total_rodagem}</p></div>""", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"""
-        <div style="background-color:#2f855a;height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3><h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
-        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p></div>""", unsafe_allow_html=True)
-    with col3:
-        cor = "#c53030" if atraso > 0 else "#38a169"
-        texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
-        st.markdown(f"""
-        <div style="background-color:{cor};height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
-    with col4:
-        st.markdown(f"""
-        <div style="background-color:#805AD5;height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">OEE</h3><h1 style="color:white;font-size:{fonte}">{oee:.2f}%</h1>
-        <p style="color:#E3E3E3;font-size:{fonte}">Perf: {performance:.2f}% | Qualid: {qualidade:.2f}%</p>
+        <div style="background-color:#2B6CB0;height:{altura};
+        display:flex;flex-direction:column;justify-content:center;align-items:center;
+        border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">Total Produzido</h3>
+        <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         </div>""", unsafe_allow_html=True)
 
-    # ======= Pareto NC =======
-    st.markdown("### 📊 Pareto das Não Conformidades")
-    df_nc = []
-    if not df_checks_filtrado.empty:
-        for _, row in df_checks_filtrado.iterrows():
-            if row["status"] == "Não Conforme":
-                df_nc.append({"item": row["item"], "numero_serie": row["numero_serie"]})
-    df_nc = pd.DataFrame(df_nc)
-    if not df_nc.empty:
-        pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
-        pareto.columns = ["Item", "Quantidade"]
-        pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=pareto["Item"], y=pareto["Quantidade"], name="NC"))
-        fig.add_trace(go.Scatter(x=pareto["Item"], y=pareto["%"], mode="lines+markers", name="% Acumulado", yaxis="y2"))
-        fig.update_layout(yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 110]))
+    # ---------- CARD: % Aprovação ----------
+    with col2:
+        st.markdown(f"""
+        <div style="background-color:#38A169;height:{altura};
+        display:flex;flex-direction:column;justify-content:center;align-items:center;
+        border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">% Aprovação</h3>
+        <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
+        </div>""", unsafe_allow_html=True)
+
+    # ---------- CARD: Status ----------
+    with col3:
+        atraso = meta_total - total_lidos
+        status = "Dentro da meta" if atraso <= 0 else f"Atraso: {atraso}"
+        cor = "#805AD5" if atraso <= 0 else "#E53E3E"
+        st.markdown(f"""
+        <div style="background-color:{cor};height:{altura};
+        display:flex;flex-direction:column;justify-content:center;align-items:center;
+        border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">Status</h3>
+        <h1 style="color:white;font-size:{fonte}">{status}</h1>
+        </div>""", unsafe_allow_html=True)
+
+    # ---------- GAUGE: OEE ----------
+    with col4:
+        fig = go.Figure(go.Indicator(
+            mode = "gauge+number+delta",
+            value = oee,
+            delta = {'reference': 85, "increasing": {"color":"green"}, "decreasing": {"color":"red"}},
+            title = {'text': "OEE (%)"},
+            gauge = {
+                'axis': {'range': [0,100]},
+                'bar': {'color': "blue"},
+                'steps': [
+                    {'range': [0, 60], 'color': "#FF4C4C"},   # vermelho
+                    {'range': [60, 85], 'color': "#FFD700"},  # amarelo
+                    {'range': [85, 100], 'color': "#4CAF50"}  # verde
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 85  # meta
+                }
+            }
+        ))
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Nenhuma não conformidade registrada.")
 
 
 # ==============================
