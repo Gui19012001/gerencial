@@ -200,7 +200,7 @@ def painel_dashboard():
         fig_oee.update_layout(height=altura, margin={'l':10, 'r':10, 't':30, 'b':10}, paper_bgcolor='rgba(0,0,0,0)')
         # Anotação com breakdown (Performance e Qualidade) dentro do gráfico, assim não aumenta a altura do card
         fig_oee.add_annotation(
-            x=0.5, y=0.02, xref='paper', yref='paper',
+            x=0.5, y=-0.02, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
