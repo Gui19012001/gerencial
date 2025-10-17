@@ -97,7 +97,7 @@ def painel_dashboard():
     if not df_checks.empty:
         df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
 
-    # ======= Cálculo de Atraso =======
+    # ======= Cálculo de Atraso (usa meta por hora como antes) =======
     meta_hora = {
         datetime.time(6,0):22, datetime.time(7,0):22, datetime.time(8,0):22,
         datetime.time(9,0):22, datetime.time(10,0):22, datetime.time(11,0):4,
@@ -142,54 +142,69 @@ def painel_dashboard():
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
-    # ======= Cartões Resumo =======
-    col1, col2, col3 = st.columns(3)
-    altura = "220px"
+    # ======= Cálculo do OEE (correto) =======
+    meta_total = 188  # meta fixa
+    performance_fraction = (total_lidos / meta_total) if meta_total > 0 else 0
+    performance_percent = performance_fraction * 100
+    quality_fraction = (aprovacao_perc / 100)
+    oee_fraction = performance_fraction * quality_fraction  # disponibilidade = 1 (100%)
+    oee_percent = oee_fraction * 100
+
+    # ======= Cartões Resumo + Gauge (na mesma linha) =======
+    col1, col2, col3, col4 = st.columns(4)
+    altura = 220  # px (número para usar no plotly height)
     fonte = "18px"
 
     with col1:
         st.markdown(f"""
-        <div style="background-color:#2b6cb0;height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3><h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">Esteira: {total_esteira} | Rodagem: {total_rodagem}</p></div>""", unsafe_allow_html=True)
+
     with col2:
         st.markdown(f"""
-        <div style="background-color:#2f855a;height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3><h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p></div>""", unsafe_allow_html=True)
+
     with col3:
         cor = "#c53030" if atraso > 0 else "#38a169"
         texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
         st.markdown(f"""
-        <div style="background-color:{cor};height:{altura};display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
 
-    # ======= OEE (Gauge) =======
-    meta_total = 188  # meta fixa
-    oee = (total_lidos / meta_total) * 100 if meta_total > 0 else 0
-
-    st.markdown("### ⚙️ OEE")
-    fig_oee = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=oee,
-        number={'suffix': "%"},
-        delta={'reference': 85, 'increasing': {'color': "red"}},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "green"},
-            'steps': [
-                {'range': [0, 60], 'color': "red"},
-                {'range': [60, 85], 'color': "yellow"},
-                {'range': [85, 100], 'color': "green"},
-            ],
-            'threshold': {
-                'line': {'color': "black", 'width': 4},
-                'thickness': 0.75,
-                'value': 85
+    # Gauge OEE (mesma altura dos cartões)
+    with col4:
+        fig_oee = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=oee_percent,
+            number={'suffix': "%", 'font': {'size': 20}},
+            title={'text': "OEE", 'font': {'size': 14}},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "#1E90FF"},
+                'steps': [
+                    {'range': [0, 60], 'color': "#FF4C4C"},
+                    {'range': [60, 85], 'color': "#FFD700"},
+                    {'range': [85, 100], 'color': "#4CAF50"}
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 85
+                }
             }
-        }
-    ))
-    st.plotly_chart(fig_oee, use_container_width=True)
+        ))
+        # Mantenha a mesma altura dos cards
+        fig_oee.update_layout(height=altura, margin={'l':10, 'r':10, 't':30, 'b':10}, paper_bgcolor='rgba(0,0,0,0)')
+        # Anotação com breakdown (Performance e Qualidade) dentro do gráfico, assim não aumenta a altura do card
+        fig_oee.add_annotation(
+            x=0.5, y=0.02, xref='paper', yref='paper',
+            text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
+            showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
+        )
+        st.plotly_chart(fig_oee, use_container_width=True)
 
     # ======= Pareto NC =======
     st.markdown("### 📊 Pareto das Não Conformidades")
