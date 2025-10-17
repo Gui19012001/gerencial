@@ -226,76 +226,22 @@ def painel_dashboard():
     else:
         st.info("Nenhuma não conformidade registrada.")
 
-def relatorio_apontamentos_por_op():
-    st.subheader("📦 Apontamentos por Ordem de Produção")
-
-    # Carregar apontamentos
-    df_apont = carregar_apontamentos()
-
-    # Buscar dados da tabela "SÉRIES-VEA"
-    response = supabase.table("SÉRIES-VEA").select("*").limit(1000).execute()
-    df_op = pd.DataFrame(response.data)
-
-    # Verificações
-    if df_apont.empty or df_op.empty:
-        st.warning("Sem dados para exibir.")
-        return
-
-    # Convertendo e filtrando a data
-    hoje = datetime.datetime.now(TZ).date()
-    df_apont["data_hora"] = pd.to_datetime(df_apont["data_hora"], utc=True).dt.tz_convert(TZ)
-    df_apont = df_apont[df_apont["data_hora"].dt.date == hoje]
-
-    # Garantir tipos compatíveis para o join
-    df_apont["numero_serie"] = df_apont["numero_serie"].astype(str)
-    df_op["SERIE"] = df_op["SERIE"].astype(str)
-
-    # Merge
-    df_merge = pd.merge(df_apont, df_op, left_on="numero_serie", right_on="SERIE", how="inner")
-
-    if df_merge.empty:
-        st.info("Nenhum apontamento com OP encontrado para hoje.")
-        return
-
-    # Agrupar por OP
-    df_relatorio = df_merge.groupby("ORDEM DE PRODUÇÃO")["numero_serie"].count().reset_index()
-    df_relatorio.columns = ["OP", "Quantidade"]
-    df_relatorio = df_relatorio.sort_values(by="Quantidade", ascending=False)
-
-    st.dataframe(df_relatorio, use_container_width=True)
-
-    # Gráfico de barras
-    fig = go.Figure(go.Bar(
-        x=df_relatorio["OP"],
-        y=df_relatorio["Quantidade"],
-        marker_color='indigo'
-    ))
-    fig.update_layout(title="Apontamentos por OP (Hoje)", xaxis_title="OP", yaxis_title="Qtd", height=400)
-    st.plotly_chart(fig, use_container_width=True)
-
-
 # ==============================
 # Main
 # ==============================
 def main():
     st.set_page_config(page_title="Dashboard Produção", layout="wide")
 
-    # Atualiza automaticamente a cada 10 segundos
+    # Atualiza automaticamente a cada 1 minuto
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=10000, key="dashboard_refresh")
 
-    # Menu lateral
-    st.sidebar.title("📌 Navegação")
-    menu = st.sidebar.selectbox("Selecione a página", ["Dashboard", "Apontamento por OP"])
+    st.title("📊 Dashboard de Produção")
+    painel_dashboard()
 
-    # Título da página e chamada das funções
-    if menu == "Dashboard":
-        st.title("📊 Dashboard de Produção")
-        painel_dashboard()
-    elif menu == "Apontamento por OP":
-        st.title("📦 Apontamento por OP")
-        relatorio_apontamentos_por_op()
-
-    # Rodapé com hora da última atualização
+    # Hora da última atualização
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
     st.markdown(f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>", unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
