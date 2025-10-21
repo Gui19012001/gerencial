@@ -97,7 +97,7 @@ def painel_dashboard():
     if not df_checks.empty:
         df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
 
-    # ======= Cálculo de Atraso (usa meta por hora como antes) =======
+    # ======= Cálculo de Atraso =======
     meta_hora = {
         datetime.time(6,0):22, datetime.time(7,0):22, datetime.time(8,0):22,
         datetime.time(9,0):22, datetime.time(10,0):22, datetime.time(11,0):4,
@@ -142,17 +142,21 @@ def painel_dashboard():
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
-    # ======= Cálculo do OEE (correto) =======
-    meta_total = 188  # meta fixa
-    performance_fraction = (total_lidos / meta_total) if meta_total > 0 else 0
+    # ======= Cálculo do OEE (inicia em 100% e cai conforme atraso) =======
+    meta_total = 188  # meta diária
+    if meta_acumulada > 0:
+        performance_fraction = max(1 - (atraso / meta_acumulada), 0)
+    else:
+        performance_fraction = 1  # início do turno (sem meta ainda)
+
     performance_percent = performance_fraction * 100
-    quality_fraction = (aprovacao_perc / 100)
-    oee_fraction = performance_fraction * quality_fraction  # disponibilidade = 1 (100%)
+    quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
+    oee_fraction = performance_fraction * quality_fraction
     oee_percent = oee_fraction * 100
 
-    # ======= Cartões Resumo + Gauge (na mesma linha) =======
+    # ======= Cartões Resumo + Gauge =======
     col1, col2, col3, col4 = st.columns(4)
-    altura = 220  # px (número para usar no plotly height)
+    altura = 220
     fonte = "18px"
 
     with col1:
@@ -174,7 +178,6 @@ def painel_dashboard():
         <div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
 
-    # Gauge OEE (mesma altura dos cartões)
     with col4:
         fig_oee = go.Figure(go.Indicator(
             mode="gauge+number",
@@ -196,9 +199,7 @@ def painel_dashboard():
                 }
             }
         ))
-        # Mantenha a mesma altura dos cards
         fig_oee.update_layout(height=altura, margin={'l':10, 'r':10, 't':30, 'b':10}, paper_bgcolor='rgba(0,0,0,0)')
-        # Anotação com breakdown (Performance e Qualidade) dentro do gráfico, assim não aumenta a altura do card
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
