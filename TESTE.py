@@ -97,20 +97,30 @@ def painel_dashboard():
     if not df_checks.empty:
         df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
 
-    # ======= Cálculo de Atraso =======
+    # ======= Cálculo de Atraso (lógica atualizada) =======
     meta_hora = {
         datetime.time(6,0):22, datetime.time(7,0):22, datetime.time(8,0):22,
         datetime.time(9,0):22, datetime.time(10,0):22, datetime.time(11,0):4,
         datetime.time(12,0):18, datetime.time(13,0):22, datetime.time(14,0):22, datetime.time(15,0):12
     }
+
     total_lidos = len(df_apont)
     meta_acumulada = 0
     hora_atual = datetime.datetime.now(TZ)
+
+    # Soma a meta de todas as horas que já começaram
     for h, m in meta_hora.items():
-        horario_fechado = TZ.localize(datetime.datetime.combine(hoje, h)) + datetime.timedelta(hours=1)
-        if hora_atual >= horario_fechado:
+        horario_inicio = datetime.datetime.combine(hoje, h)
+        # Garante que o datetime está no mesmo fuso horário
+        if horario_inicio.tzinfo is None:
+            horario_inicio = TZ.localize(horario_inicio)
+
+        if hora_atual >= horario_inicio:
             meta_acumulada += m
+
+    # Atraso: diferença entre meta acumulada e total produzido
     atraso = max(meta_acumulada - total_lidos, 0)
+
 
     # ======= % Aprovação =======
     if not df_checks.empty and not df_apont.empty:
