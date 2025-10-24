@@ -251,7 +251,7 @@ def painel_dashboard():
             )
         )
 
-        # Linha de % acumulado com rótulos estilizados
+        # Linha de % acumulado em branco
         fig.add_trace(
             go.Scatter(
                 x=pareto["Item"],
@@ -261,9 +261,9 @@ def painel_dashboard():
                 yaxis="y2",
                 text=[f"{v:.1f}%" for v in pareto["%"]],
                 textposition="top center",
-                textfont=dict(size=12, color="#1E3A1A", family="Arial Black"),  # Negrito e cor destaque
-                line=dict(width=3, color="#FFD700"),
-                marker=dict(size=8, color="#FFD700"),
+                textfont=dict(size=12, color="white", family="Arial Black"),  # Branco e negrito
+                line=dict(width=3, color="white"),
+                marker=dict(size=8, color="white"),
             )
         )
 
@@ -285,13 +285,14 @@ def painel_dashboard():
             bargap=0.3,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            legend=dict(x=0.85, y=1.1),
+            legend=dict(x=0.85, y=1.1, font=dict(color="white")),
             margin=dict(l=40, r=40, t=40, b=40),
         )
 
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhuma não conformidade registrada.")
+
 
 
 
