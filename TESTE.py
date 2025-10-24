@@ -217,7 +217,7 @@ def painel_dashboard():
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-        # ======= Pareto NC =======
+    # ======= Pareto NC =======
     st.markdown("### 📊 Pareto das Não Conformidades")
     df_nc = []
     if not df_checks_filtrado.empty:
@@ -238,19 +238,20 @@ def painel_dashboard():
 
         fig = go.Figure()
 
-        # Barras com os números visíveis
+        # Barras com números visíveis e estilizados
         fig.add_trace(
             go.Bar(
                 x=pareto["Item"],
                 y=pareto["Quantidade"],
                 name="NC",
                 text=pareto["Quantidade"],
-                textposition="outside",  # Mostra o número acima da barra
-                marker_color="lightskyblue"
+                textposition="outside",
+                textfont=dict(size=14, color="white", family="Arial Black"),  # Negrito e maior
+                marker_color="lightskyblue",
             )
         )
 
-        # Linha de % acumulado
+        # Linha de % acumulado com rótulos estilizados
         fig.add_trace(
             go.Scatter(
                 x=pareto["Item"],
@@ -260,13 +261,27 @@ def painel_dashboard():
                 yaxis="y2",
                 text=[f"{v:.1f}%" for v in pareto["%"]],
                 textposition="top center",
-                textfont=dict(size=10, color="#E3E3E3")
+                textfont=dict(size=12, color="#FFD700", family="Arial Black"),  # Negrito e cor destaque
+                line=dict(width=3, color="#FFD700"),
+                marker=dict(size=8, color="#FFD700"),
             )
         )
 
+        # Layout sem números nos eixos e visual mais limpo
         fig.update_layout(
-            yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 110]),
-            yaxis=dict(title="Quantidade"),
+            yaxis=dict(
+                title="",
+                showticklabels=False,
+                showgrid=False,
+            ),
+            yaxis2=dict(
+                title="",
+                overlaying="y",
+                side="right",
+                range=[0, 110],
+                showticklabels=False,
+                showgrid=False,
+            ),
             bargap=0.3,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -277,6 +292,7 @@ def painel_dashboard():
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhuma não conformidade registrada.")
+
 
 
 # ==============================
