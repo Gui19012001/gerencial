@@ -217,7 +217,7 @@ def painel_dashboard():
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-    # ======= Pareto NC =======
+        # ======= Pareto NC =======
     st.markdown("### 📊 Pareto das Não Conformidades")
     df_nc = []
     if not df_checks_filtrado.empty:
@@ -225,17 +225,59 @@ def painel_dashboard():
             if row["status"] == "Não Conforme":
                 df_nc.append({"item": row["item"], "numero_serie": row["numero_serie"]})
     df_nc = pd.DataFrame(df_nc)
+
     if not df_nc.empty:
-        pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
+        pareto = (
+            df_nc.groupby("item")["numero_serie"]
+            .count()
+            .sort_values(ascending=False)
+            .reset_index()
+        )
         pareto.columns = ["Item", "Quantidade"]
         pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+
         fig = go.Figure()
-        fig.add_trace(go.Bar(x=pareto["Item"], y=pareto["Quantidade"], name="NC"))
-        fig.add_trace(go.Scatter(x=pareto["Item"], y=pareto["%"], mode="lines+markers", name="% Acumulado", yaxis="y2"))
-        fig.update_layout(yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 110]))
+
+        # Barras com os números visíveis
+        fig.add_trace(
+            go.Bar(
+                x=pareto["Item"],
+                y=pareto["Quantidade"],
+                name="NC",
+                text=pareto["Quantidade"],
+                textposition="outside",  # Mostra o número acima da barra
+                marker_color="lightskyblue"
+            )
+        )
+
+        # Linha de % acumulado
+        fig.add_trace(
+            go.Scatter(
+                x=pareto["Item"],
+                y=pareto["%"],
+                mode="lines+markers+text",
+                name="% Acumulado",
+                yaxis="y2",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center",
+                textfont=dict(size=10, color="#E3E3E3")
+            )
+        )
+
+        fig.update_layout(
+            yaxis2=dict(title="%", overlaying="y", side="right", range=[0, 110]),
+            yaxis=dict(title="Quantidade"),
+            bargap=0.3,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(x=0.85, y=1.1),
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
+
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhuma não conformidade registrada.")
+
 
 # ==============================
 # Main
