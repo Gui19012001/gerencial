@@ -304,7 +304,7 @@ def main():
 
     # Atualiza automaticamente a cada 1 minuto
     if AUTORELOAD_AVAILABLE:
-        st_autorefresh(interval=10000, key="dashboard_refresh")
+        st_autorefresh(interval=1000, key="dashboard_refresh")
 
     st.title("📊 Dashboard de Produção")
     painel_dashboard()
