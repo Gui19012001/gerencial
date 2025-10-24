@@ -261,7 +261,7 @@ def painel_dashboard():
                 yaxis="y2",
                 text=[f"{v:.1f}%" for v in pareto["%"]],
                 textposition="top center",
-                textfont=dict(size=12, color="#FFD700", family="Arial Black"),  # Negrito e cor destaque
+                textfont=dict(size=12, color="#1E3A8A", family="Arial Black"),  # Negrito e cor destaque
                 line=dict(width=3, color="#FFD700"),
                 marker=dict(size=8, color="#FFD700"),
             )
