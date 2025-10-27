@@ -278,7 +278,7 @@ def painel_dashboard():
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             legend=dict(x=0.85, y=1.1, font=dict(color="white")),
-            margin=dict(l=10, r=10, t=25, b=25)
+            margin=dict(l=10, r=10, t=50, b=25)
         )
 
         st.plotly_chart(fig, use_container_width=True)
