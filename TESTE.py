@@ -239,13 +239,14 @@ if not df_nc.empty:
         .sort_values(ascending=False)
         .reset_index()
     )
+
     pareto.columns = ["Item", "Quantidade"]
     pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
 
     # === Gráfico Pareto ===
     fig = go.Figure()
 
-    # === Barras ===
+    # === Barras com números visíveis e estilizados ===
     fig.add_trace(
         go.Bar(
             x=pareto["Item"],
@@ -253,12 +254,12 @@ if not df_nc.empty:
             name="NC",
             text=pareto["Quantidade"],
             textposition="outside",
-            textfont=dict(size=18, color="white", family="Arial Black"),
+            textfont=dict(size=14, color="white", family="Arial Black"),  # Negrito e maior
             marker_color="lightskyblue",
         )
     )
 
-    # === Linha de % acumulado ===
+    # === Linha de % acumulado (branca) ===
     fig.add_trace(
         go.Scatter(
             x=pareto["Item"],
@@ -268,35 +269,39 @@ if not df_nc.empty:
             yaxis="y2",
             text=[f"{v:.1f}%" for v in pareto["%"]],
             textposition="top center",
-            textfont=dict(size=16, color="white", family="Arial Black"),
+            textfont=dict(size=12, color="white", family="Arial Black"),  # Branco e negrito
             line=dict(width=3, color="white"),
-            marker=dict(size=10, color="white"),
+            marker=dict(size=8, color="white"),
         )
     )
 
-    # === Layout otimizado p/ TV ===
+    # === Layout limpo e otimizado para tela ===
     fig.update_layout(
-        height=550,  # aumenta a altura do gráfico
-        bargap=0.3,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        autosize=True,
-        margin=dict(l=40, r=40, t=40, b=20),
-        legend=dict(x=0.85, y=1.15, font=dict(color="white", size=14)),
-        yaxis=dict(showticklabels=False, showgrid=False),
+        yaxis=dict(
+            title="",
+            showticklabels=False,
+            showgrid=False,
+        ),
         yaxis2=dict(
+            title="",
             overlaying="y",
             side="right",
             range=[0, 110],
             showticklabels=False,
-            showgrid=False
+            showgrid=False,
         ),
+        bargap=0.3,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(x=0.85, y=1.1, font=dict(color="white")),
+        margin=dict(l=40, r=40, t=40, b=40),
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
 else:
     st.info("Nenhuma não conformidade registrada.")
+
 
 
 
