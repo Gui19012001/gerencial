@@ -244,7 +244,7 @@ def painel_dashboard():
         if screen_height >= 2000:
             pareto_height = 100  # TVs grandes 4K
         elif screen_height >= 1080:
-            pareto_height = 100  # TV full HD
+            pareto_height = 150  # TV full HD
         else:
             pareto_height = 400  # notebook ou monitor menor
 
