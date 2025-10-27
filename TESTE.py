@@ -256,7 +256,7 @@ def painel_dashboard():
             x=pareto["Item"], y=pareto["%"], mode="lines+markers+text",
             name="% Acumulado", yaxis="y2",
             text=[f"{v:.1f}%" for v in pareto["%"]],
-            textposition="top center", textfont=dict(size=12,color="white",family="Arial Black"),
+            textposition="top center", textfont=dict(size=10,color="white",family="Arial Black"),
             line=dict(width=3,color="white"), marker=dict(size=8,color="white")
         ))
 
