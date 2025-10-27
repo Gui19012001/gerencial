@@ -217,12 +217,14 @@ def painel_dashboard():
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-# ======= Pareto NC =======
-st.markdown("### 📊 Pareto das Não Conformidades")
+# Evita erro se df_checks_filtrado ainda não foi criado
+if "df_checks_filtrado" not in locals() or df_checks_filtrado.empty:
+    st.info("Nenhum dado filtrado disponível para gerar o Pareto.")
+else:
+    # ======= Pareto NC =======
+    st.markdown("### 📊 Pareto das Não Conformidades")
+    df_nc = []
 
-df_nc = []
-
-if not df_checks_filtrado.empty:
     for _, row in df_checks_filtrado.iterrows():
         if row["status"] == "Não Conforme":
             df_nc.append({
@@ -230,77 +232,68 @@ if not df_checks_filtrado.empty:
                 "numero_serie": row["numero_serie"]
             })
 
-df_nc = pd.DataFrame(df_nc)
+    df_nc = pd.DataFrame(df_nc)
 
-if not df_nc.empty:
-    pareto = (
-        df_nc.groupby("item")["numero_serie"]
-        .count()
-        .sort_values(ascending=False)
-        .reset_index()
-    )
-
-    pareto.columns = ["Item", "Quantidade"]
-    pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
-
-    # === Gráfico Pareto ===
-    fig = go.Figure()
-
-    # === Barras com números visíveis e estilizados ===
-    fig.add_trace(
-        go.Bar(
-            x=pareto["Item"],
-            y=pareto["Quantidade"],
-            name="NC",
-            text=pareto["Quantidade"],
-            textposition="outside",
-            textfont=dict(size=14, color="white", family="Arial Black"),  # Negrito e maior
-            marker_color="lightskyblue",
+    if not df_nc.empty:
+        pareto = (
+            df_nc.groupby("item")["numero_serie"]
+            .count()
+            .sort_values(ascending=False)
+            .reset_index()
         )
-    )
 
-    # === Linha de % acumulado (branca) ===
-    fig.add_trace(
-        go.Scatter(
-            x=pareto["Item"],
-            y=pareto["%"],
-            mode="lines+markers+text",
-            name="% Acumulado",
-            yaxis="y2",
-            text=[f"{v:.1f}%" for v in pareto["%"]],
-            textposition="top center",
-            textfont=dict(size=12, color="white", family="Arial Black"),  # Branco e negrito
-            line=dict(width=3, color="white"),
-            marker=dict(size=8, color="white"),
+        pareto.columns = ["Item", "Quantidade"]
+        pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Bar(
+                x=pareto["Item"],
+                y=pareto["Quantidade"],
+                name="NC",
+                text=pareto["Quantidade"],
+                textposition="outside",
+                textfont=dict(size=14, color="white", family="Arial Black"),
+                marker_color="lightskyblue",
+            )
         )
-    )
 
-    # === Layout limpo e otimizado para tela ===
-    fig.update_layout(
-        yaxis=dict(
-            title="",
-            showticklabels=False,
-            showgrid=False,
-        ),
-        yaxis2=dict(
-            title="",
-            overlaying="y",
-            side="right",
-            range=[0, 110],
-            showticklabels=False,
-            showgrid=False,
-        ),
-        bargap=0.3,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(x=0.85, y=1.1, font=dict(color="white")),
-        margin=dict(l=40, r=40, t=40, b=40),
-    )
+        fig.add_trace(
+            go.Scatter(
+                x=pareto["Item"],
+                y=pareto["%"],
+                mode="lines+markers+text",
+                name="% Acumulado",
+                yaxis="y2",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center",
+                textfont=dict(size=12, color="white", family="Arial Black"),
+                line=dict(width=3, color="white"),
+                marker=dict(size=8, color="white"),
+            )
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            yaxis=dict(title="", showticklabels=False, showgrid=False),
+            yaxis2=dict(
+                title="",
+                overlaying="y",
+                side="right",
+                range=[0, 110],
+                showticklabels=False,
+                showgrid=False,
+            ),
+            bargap=0.3,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(x=0.85, y=1.1, font=dict(color="white")),
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
 
-else:
-    st.info("Nenhuma não conformidade registrada.")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Nenhuma não conformidade registrada.")
 
 
 
