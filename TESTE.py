@@ -33,6 +33,27 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ==============================
 TZ = pytz.timezone("America/Sao_Paulo")
 
+
+# ======== REMOVER ESPAÇOS SUPERIORES / COLAR DASH NO TOPO ========
+st.markdown("""
+    <style>
+        .block-container {
+            padding-top: 0rem !important;
+            padding-bottom: 0rem !important;
+        }
+        header, footer {visibility: hidden;}
+        section.main > div:first-child {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
+        /* Sombras suaves para TV */
+        .card {
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.4);
+            border-radius: 20px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # ==============================
 # Funções Supabase
 # ==============================
