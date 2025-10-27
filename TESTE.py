@@ -184,7 +184,7 @@ def painel_dashboard():
 
     # ======= Cartões Resumo + Gauge =======
     col1, col2, col3, col4 = st.columns(4)
-    altura = 150
+    altura = 180
     fonte = "18px"
 
     with col1:
@@ -278,7 +278,7 @@ def painel_dashboard():
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             legend=dict(x=0.85, y=1.1, font=dict(color="white")),
-            margin=dict(l=10, r=10, t=20, b=20)
+            margin=dict(l=10, r=10, t=15, b=15)
         )
 
         st.plotly_chart(fig, use_container_width=True)
