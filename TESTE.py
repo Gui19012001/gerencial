@@ -83,7 +83,18 @@ def _load_apontamentos():
 def painel_dashboard():
     hoje = datetime.datetime.now(TZ).date()
 
-    # Filtro de data no sidebar
+    # ====== Captura automática da resolução da tela ======
+    if "screen_height" not in st.session_state:
+        st.session_state.screen_height = 1080  # padrão
+
+    st.markdown("""
+        <script>
+        const height = window.screen.height;
+        window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height}, "*");
+        </script>
+    """, unsafe_allow_html=True)
+
+    # Filtro de data
     st.sidebar.markdown("### Filtro de Data")
     data_inicio = st.sidebar.date_input("Data Início", hoje)
     data_fim = st.sidebar.date_input("Data Fim", hoje)
@@ -97,30 +108,22 @@ def painel_dashboard():
     if not df_checks.empty:
         df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
 
-    # ======= Cálculo de Atraso (lógica atualizada) =======
+    # ======= Cálculo de Atraso =======
     meta_hora = {
         datetime.time(6,0):24, datetime.time(7,0):24, datetime.time(8,0):24,
         datetime.time(9,0):24, datetime.time(10,0):24, datetime.time(11,0):6,
         datetime.time(12,0):20, datetime.time(13,0):22, datetime.time(14,0):22, datetime.time(15,0):12
     }
-
     total_lidos = len(df_apont)
     meta_acumulada = 0
     hora_atual = datetime.datetime.now(TZ)
-
-    # Soma a meta de todas as horas que já começaram
     for h, m in meta_hora.items():
         horario_inicio = datetime.datetime.combine(hoje, h)
-        # Garante que o datetime está no mesmo fuso horário
         if horario_inicio.tzinfo is None:
             horario_inicio = TZ.localize(horario_inicio)
-
         if hora_atual >= horario_inicio:
             meta_acumulada += m
-
-    # Atraso: diferença entre meta acumulada e total produzido
     atraso = max(meta_acumulada - total_lidos, 0)
-
 
     # ======= % Aprovação =======
     if not df_checks.empty and not df_apont.empty:
@@ -152,17 +155,11 @@ def painel_dashboard():
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
-    # ======= Cálculo do OEE (inicia em 100% e cai conforme atraso) =======
-    meta_total = 188  # meta diária
-    if meta_acumulada > 0:
-        performance_fraction = max(1 - (atraso / meta_acumulada), 0)
-    else:
-        performance_fraction = 1  # início do turno (sem meta ainda)
-
+    # ======= Cálculo do OEE =======
+    performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
-    oee_fraction = performance_fraction * quality_fraction
-    oee_percent = oee_fraction * 100
+    oee_percent = performance_fraction * quality_fraction * 100
 
     # ======= Cartões Resumo + Gauge =======
     col1, col2, col3, col4 = st.columns(4)
@@ -202,14 +199,10 @@ def painel_dashboard():
                     {'range': [60, 85], 'color': "#FFD700"},
                     {'range': [85, 100], 'color': "#4CAF50"}
                 ],
-                'threshold': {
-                    'line': {'color': "black", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 85
-                }
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': 85}
             }
         ))
-        fig_oee.update_layout(height=altura, margin={'l':10, 'r':10, 't':30, 'b':10}, paper_bgcolor='rgba(0,0,0,0)')
+        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
@@ -217,78 +210,54 @@ def painel_dashboard():
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-# Evita erro se df_checks_filtrado ainda não foi criado
-if "df_checks_filtrado" not in locals() or df_checks_filtrado.empty:
-    st.info("Nenhum dado filtrado disponível para gerar o Pareto.")
-else:
     # ======= Pareto NC =======
     st.markdown("### 📊 Pareto das Não Conformidades")
     df_nc = []
-
-    for _, row in df_checks_filtrado.iterrows():
-        if row["status"] == "Não Conforme":
-            df_nc.append({
-                "item": row["item"],
-                "numero_serie": row["numero_serie"]
-            })
-
+    if not df_checks_filtrado.empty:
+        for _, row in df_checks_filtrado.iterrows():
+            if row.get("status") == "Não Conforme":
+                df_nc.append({"item": row.get("item"), "numero_serie": row.get("numero_serie")})
     df_nc = pd.DataFrame(df_nc)
 
     if not df_nc.empty:
-        pareto = (
-            df_nc.groupby("item")["numero_serie"]
-            .count()
-            .sort_values(ascending=False)
-            .reset_index()
-        )
-
+        pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
         pareto.columns = ["Item", "Quantidade"]
         pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
 
         fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=pareto["Item"], y=pareto["Quantidade"], name="NC",
+            text=pareto["Quantidade"], textposition="outside",
+            textfont=dict(size=14,color="white",family="Arial Black"),
+            marker_color="lightskyblue"
+        ))
+        fig.add_trace(go.Scatter(
+            x=pareto["Item"], y=pareto["%"], mode="lines+markers+text",
+            name="% Acumulado", yaxis="y2",
+            text=[f"{v:.1f}%" for v in pareto["%"]],
+            textposition="top center", textfont=dict(size=12,color="white",family="Arial Black"),
+            line=dict(width=3,color="white"), marker=dict(size=8,color="white")
+        ))
 
-        fig.add_trace(
-            go.Bar(
-                x=pareto["Item"],
-                y=pareto["Quantidade"],
-                name="NC",
-                text=pareto["Quantidade"],
-                textposition="outside",
-                textfont=dict(size=14, color="white", family="Arial Black"),
-                marker_color="lightskyblue",
-            )
-        )
-
-        fig.add_trace(
-            go.Scatter(
-                x=pareto["Item"],
-                y=pareto["%"],
-                mode="lines+markers+text",
-                name="% Acumulado",
-                yaxis="y2",
-                text=[f"{v:.1f}%" for v in pareto["%"]],
-                textposition="top center",
-                textfont=dict(size=12, color="white", family="Arial Black"),
-                line=dict(width=3, color="white"),
-                marker=dict(size=8, color="white"),
-            )
-        )
+        # ===== AJUSTE AUTOMÁTICO DE ALTURA =====
+        screen_height = st.session_state.get("screen_height", 1080)
+        if screen_height >= 2000:
+            pareto_height = 700  # TVs grandes 4K
+        elif screen_height >= 1080:
+            pareto_height = 500  # TV full HD
+        else:
+            pareto_height = 400  # notebook ou monitor menor
 
         fig.update_layout(
+            height=pareto_height,
             yaxis=dict(title="", showticklabels=False, showgrid=False),
-            yaxis2=dict(
-                title="",
-                overlaying="y",
-                side="right",
-                range=[0, 110],
-                showticklabels=False,
-                showgrid=False,
-            ),
+            yaxis2=dict(title="", overlaying="y", side="right", range=[0,110],
+                        showticklabels=False, showgrid=False),
             bargap=0.3,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             legend=dict(x=0.85, y=1.1, font=dict(color="white")),
-            margin=dict(l=40, r=40, t=40, b=40),
+            margin=dict(l=10, r=10, t=20, b=20)
         )
 
         st.plotly_chart(fig, use_container_width=True)
