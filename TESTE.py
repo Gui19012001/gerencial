@@ -163,7 +163,7 @@ def painel_dashboard():
 
     # ======= Cartões Resumo + Gauge =======
     col1, col2, col3, col4 = st.columns(4)
-    altura = 200
+    altura = 190
     fonte = "18px"
 
     with col1:
@@ -244,7 +244,7 @@ def painel_dashboard():
         if screen_height >= 2000:
             pareto_height = 100  # TVs grandes 4K
         elif screen_height >= 1080:
-            pareto_height = 160  # TV full HD
+            pareto_height = 180  # TV full HD
         else:
             pareto_height = 400  # notebook ou monitor menor
 
