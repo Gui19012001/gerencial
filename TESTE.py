@@ -249,7 +249,7 @@ def painel_dashboard():
         fig.add_trace(go.Bar(
             x=pareto["Item"], y=pareto["Quantidade"], name="NC",
             text=pareto["Quantidade"], textposition="outside",
-            textfont=dict(size=14,color="white",family="Arial Black"),
+            textfont=dict(size=12,color="white",family="Arial Black"),
             marker_color="lightskyblue"
         ))
         fig.add_trace(go.Scatter(
