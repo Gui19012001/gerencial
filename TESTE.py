@@ -242,7 +242,7 @@ def painel_dashboard():
         # ===== AJUSTE AUTOMÁTICO DE ALTURA =====
         screen_height = st.session_state.get("screen_height", 1080)
         if screen_height >= 2000:
-            pareto_height = 200  # TVs grandes 4K
+            pareto_height = 100  # TVs grandes 4K
         elif screen_height >= 1080:
             pareto_height = 500  # TV full HD
         else:
