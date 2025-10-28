@@ -288,7 +288,7 @@ def painel_dashboard():
                     title="",
                     overlaying="y",
                     side="right",
-                    range=[0, 100],
+                    range=[0, 130],
                     showticklabels=False,
                     showgrid=False
                 ),
