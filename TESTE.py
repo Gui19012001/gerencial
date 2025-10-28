@@ -282,7 +282,7 @@ def painel_dashboard():
 
             fig.update_layout(
                 height=pareto_height,
-                margin=dict(l=40, r=40, t=20, b=100),
+                margin=dict(l=20, r=20, t=20, b=100),
                 yaxis=dict(title="", showticklabels=False, showgrid=False),
                 yaxis2=dict(
                     title="",
