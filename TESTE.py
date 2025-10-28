@@ -278,7 +278,7 @@ def painel_dashboard():
 
             # Layout
             screen_height = st.session_state.get("screen_height", 1080)
-            pareto_height = 220 if screen_height < 1080 else 300
+            pareto_height = 300 if screen_height < 1080 else 300
 
             fig.update_layout(
                 height=pareto_height,
