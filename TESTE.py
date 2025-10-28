@@ -115,21 +115,23 @@ def painel_dashboard():
         </script>
     """, unsafe_allow_html=True)
 
-    # Filtro de data
+    # ====== Filtro de data ======
     st.sidebar.markdown("### Filtro de Data")
     data_inicio = st.sidebar.date_input("Data Início", hoje)
     data_fim = st.sidebar.date_input("Data Fim", hoje)
     force_reload = False
 
+    # ====== Carregar dados ======
     df_apont = carregar_apontamentos(force_reload=force_reload)
     df_checks = carregar_checklists(force_reload=force_reload)
 
+    # ====== Aplicar filtros ======
     if not df_apont.empty:
         df_apont = df_apont[(df_apont["data_hora"].dt.date >= data_inicio) & (df_apont["data_hora"].dt.date <= data_fim)]
     if not df_checks.empty:
         df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
 
-    # ======= Cálculo de Atraso =======
+    # ====== Cálculo de Atraso ======
     meta_hora = {
         datetime.time(6,0):24, datetime.time(7,0):24, datetime.time(8,0):24,
         datetime.time(9,0):24, datetime.time(10,0):24, datetime.time(11,0):6,
@@ -146,7 +148,7 @@ def painel_dashboard():
             meta_acumulada += m
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ======= % Aprovação =======
+    # ====== % Aprovação ======
     if not df_checks.empty and not df_apont.empty:
         df_checks_filtrado = df_checks[df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())]
     else:
@@ -168,7 +170,7 @@ def painel_dashboard():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    # ======= Esteira / Rodagem =======
+    # ====== Esteira / Rodagem ======
     total_esteira = total_rodagem = 0
     if not df_apont.empty:
         df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
@@ -176,13 +178,13 @@ def painel_dashboard():
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
-    # ======= Cálculo do OEE =======
+    # ====== Cálculo do OEE ======
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
     oee_percent = performance_fraction * quality_fraction * 100
 
-    # ======= Cartões Resumo + Gauge =======
+    # ====== Cartões Resumo + Gauge ======
     col1, col2, col3, col4 = st.columns(4)
     altura = 180
     fonte = "18px"
@@ -231,63 +233,76 @@ def painel_dashboard():
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-    # ======= Pareto NC =======
+    # ====== Pareto das Não Conformidades ======
     st.markdown("### 📊 Pareto das Não Conformidades")
-    df_nc = []
+
     if not df_checks_filtrado.empty:
-        for _, row in df_checks_filtrado.iterrows():
-            if row.get("status") == "Não Conforme":
-                df_nc.append({"item": row.get("item"), "numero_serie": row.get("numero_serie")})
-    df_nc = pd.DataFrame(df_nc)
+        df_nc = df_checks_filtrado[df_checks_filtrado["status"] == "Não Conforme"][["item", "numero_serie"]]
 
-    if not df_nc.empty:
-        pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
-        pareto.columns = ["Item", "Quantidade"]
-        pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+        if not df_nc.empty:
+            pareto = (
+                df_nc.groupby("item")["numero_serie"]
+                .count()
+                .sort_values(ascending=False)
+                .reset_index()
+            )
+            pareto.columns = ["Item", "Quantidade"]
+            pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
 
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=pareto["Item"], y=pareto["Quantidade"], name="NC",
-            text=pareto["Quantidade"], textposition="outside",
-            textfont=dict(size=10,color="white",family="Arial Black"),
-            marker_color="lightskyblue"
-        ))
-        fig.add_trace(go.Scatter(
-            x=pareto["Item"], y=pareto["%"], mode="lines+markers+text",
-            name="% Acumulado", yaxis="y2",
-            text=[f"{v:.1f}%" for v in pareto["%"]],
-            textposition="top center", textfont=dict(size=10,color="white",family="Arial Black"),
-            line=dict(width=3,color="white"), marker=dict(size=8,color="white")
-        ))
+            fig = go.Figure()
 
-        # ===== AJUSTE AUTOMÁTICO DE ALTURA =====
-        screen_height = st.session_state.get("screen_height", 1080)
-        if screen_height >= 2000:
-            pareto_height = 100  # TVs grandes 4K
-        elif screen_height >= 1080:
-            pareto_height = 300  # TV full HD
+            # Barras
+            fig.add_trace(go.Bar(
+                x=pareto["Item"],
+                y=pareto["Quantidade"],
+                name="NC",
+                text=pareto["Quantidade"],
+                textposition="auto",
+                textfont=dict(size=14, color="white", family="Arial Black"),
+                marker_color="lightskyblue"
+            ))
+
+            # Linha %
+            fig.add_trace(go.Scatter(
+                x=pareto["Item"],
+                y=pareto["%"],
+                mode="lines+markers+text",
+                name="% Acumulado",
+                yaxis="y2",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center",
+                textfont=dict(size=13, color="white", family="Arial Black"),
+                line=dict(width=3, color="white"),
+                marker=dict(size=8, color="white")
+            ))
+
+            # Layout
+            screen_height = st.session_state.get("screen_height", 1080)
+            pareto_height = 220 if screen_height < 1080 else 300
+
+            fig.update_layout(
+                height=pareto_height,
+                margin=dict(l=40, r=40, t=80, b=80),
+                yaxis=dict(title="", showticklabels=False, showgrid=False),
+                yaxis2=dict(
+                    title="",
+                    overlaying="y",
+                    side="right",
+                    range=[0, 110],
+                    showticklabels=False,
+                    showgrid=False
+                ),
+                bargap=0.25,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                legend=dict(x=0.82, y=1.2, font=dict(color="white"))
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            pareto_height = 400  # notebook ou monitor menor
-
-        fig.update_layout(
-            height=pareto_height,
-            yaxis=dict(title="", showticklabels=False, showgrid=False),
-            yaxis2=dict(title="", overlaying="y", side="right", range=[0,110],
-                        showticklabels=False, showgrid=False),
-            bargap=0.3,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            legend=dict(x=0.85, y=1.1, font=dict(color="white")),
-            margin=dict(l=10, r=10, t=50, b=25)
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+            st.info("Nenhuma não conformidade registrada.")
     else:
-        st.info("Nenhuma não conformidade registrada.")
-
-
-
-
+        st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
 
 
 # ==============================
