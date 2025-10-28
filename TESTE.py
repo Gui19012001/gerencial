@@ -186,7 +186,7 @@ def painel_dashboard():
 
     # ====== Cartões Resumo + Gauge ======
     col1, col2, col3, col4 = st.columns(4)
-    altura = 200
+    altura = 180
     fonte = "18px"
 
     with col1:
@@ -288,7 +288,7 @@ def painel_dashboard():
                     title="",
                     overlaying="y",
                     side="right",
-                    range=[0, 130],
+                    range=[0, 150],
                     showticklabels=False,
                     showgrid=False
                 ),
