@@ -82,21 +82,29 @@ def _load_checklists():
         df["data_hora"] = pd.to_datetime(df["data_hora"], utc=True).dt.tz_convert(TZ)
     return df
 
-def carregar_apontamentos(force_reload=False):
-    if not force_reload:
-        @st.cache_data(ttl=60)
-        def _carregar():
-            return _load_apontamentos()
-        return _carregar()
-    else:
-        return _load_apontamentos()
+def carregar_apontamentos():
+    """Carrega todos os apontamentos do Supabase sem limite de 1000 linhas."""
+    data_total = []
+    inicio = 0
+    passo = 1000
 
-def _load_apontamentos():
-    response = supabase.table("apontamentos").select("*").range(inicio, inicio + passo - 1).execute()
-    df = pd.DataFrame(response.data)
+    while True:
+        # Lê em blocos de 1000
+        response = supabase.table("apontamentos").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
     if not df.empty:
-        df["data_hora"] = pd.to_datetime(df["data_hora"], utc=True, format="ISO8601").dt.tz_convert(TZ)
+        # Converte corretamente a data/hora (UTC → São Paulo)
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
     return df
+
 
 # ==============================
 # Painel Dashboard
