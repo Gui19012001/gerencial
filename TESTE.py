@@ -92,7 +92,7 @@ def carregar_apontamentos(force_reload=False):
         return _load_apontamentos()
 
 def _load_apontamentos():
-    response = supabase.table("apontamentos").select("*").limit(1000).execute()
+    response = supabase.table("apontamentos").select("*").range(inicio, inicio + passo - 1).execute()
     df = pd.DataFrame(response.data)
     if not df.empty:
         df["data_hora"] = pd.to_datetime(df["data_hora"], utc=True, format="ISO8601").dt.tz_convert(TZ)
