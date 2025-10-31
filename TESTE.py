@@ -38,12 +38,12 @@ TZ = pytz.timezone("America/Sao_Paulo")
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 0rem !important;
+            padding-top: 1rem !important;   /* antes estava 0rem */
             padding-bottom: 0rem !important;
         }
         header, footer {visibility: hidden;}
         section.main > div:first-child {
-            padding-top: 0 !important;
+            padding-top: 0.5rem !important; /* novo: dá uma folga só no conteúdo */
             margin-top: 0 !important;
         }
         /* Sombras suaves para TV */
@@ -53,6 +53,7 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
+
 
 # ==============================
 # Funções Supabase
