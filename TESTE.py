@@ -92,11 +92,25 @@ def carregar_apontamentos(force_reload=False):
         return _load_apontamentos()
 
 def _load_apontamentos():
-    response = supabase.table("apontamentos").select("*").limit(1000).execute()
-    df = pd.DataFrame(response.data)
+    data_total = []
+    inicio = 0
+    passo = 1000
+
+    while True:
+        response = supabase.table("apontamentos").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
     if not df.empty:
-        df["data_hora"] = pd.to_datetime(df["data_hora"], utc=True, format="ISO8601").dt.tz_convert(TZ)
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
     return df
+
 
 # ==============================
 # Painel Dashboard
