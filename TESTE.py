@@ -37,23 +37,19 @@ TZ = pytz.timezone("America/Sao_Paulo")
 # ======== REMOVER ESPAÇOS SUPERIORES / COLAR DASH NO TOPO ========
 st.markdown("""
     <style>
-        /* Corrige o recuo geral sem esconder os filtros */
         .block-container {
-            padding-top: 2.5rem !important;  /* dá espaço pro filtro */
+            padding-top: 0rem !important;
             padding-bottom: 0rem !important;
         }
-
-        /* Oculta header/footer padrão mas mantém o topo visível */
         header, footer {visibility: hidden;}
-
-        /* Garante que o primeiro bloco não cole no topo */
         section.main > div:first-child {
-            margin-top: 1rem !important;
+            padding-top: 0 !important;
+            margin-top: 0 !important;
         }
-
-        /* Ajuste opcional de rolagem (caso sidebar corte elementos) */
-        [data-testid="stSidebar"] {
-            padding-top: 2rem !important;
+        /* Sombras suaves para TV */
+        .card {
+            box-shadow: 0px 4px 12px rgba(0,0,0,0.4);
+            border-radius: 20px;
         }
     </style>
 """, unsafe_allow_html=True)
