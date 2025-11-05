@@ -329,9 +329,6 @@ def painel_dashboard():
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
 
-# ==============================
-# Painel Dashboard Mola (usando a mesma lógica de meta do dashboard de produção)
-# ==============================
 def painel_dashboard_mola():
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
@@ -344,7 +341,6 @@ def painel_dashboard_mola():
 
     # ====== Carregar dados ======
     df_mola = carregar_apontamentos_mola(force_reload=force_reload)
-    df_checks = carregar_checklists(force_reload=force_reload)
 
     # ====== Filtrar datas ======
     if not df_mola.empty:
@@ -370,50 +366,27 @@ def painel_dashboard_mola():
 
     for h, m in meta_hora.items():
         horario_inicio = datetime.datetime.combine(hoje, h)
-        # Se horario_inicio não tem tz, localiza com TZ
         if horario_inicio.tzinfo is None:
-            try:
-                horario_inicio = TZ.localize(horario_inicio)
-            except Exception:
-                # fallback: assume hora_atual is timezone-aware; convert to same tz
-                horario_inicio = horario_inicio.replace(tzinfo=hora_atual.tzinfo)
+            horario_inicio = TZ.localize(horario_inicio)
         if hora_atual >= horario_inicio:
             meta_acumulada += m
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ====== % Aprovação ======
-    if not df_checks.empty and not df_mola.empty:
-        df_checks_filtrado = df_checks[df_checks["numero_serie"].isin(df_mola["numero_serie"].unique())]
-    else:
-        df_checks_filtrado = pd.DataFrame()
-
-    aprovacao_perc = total_inspecionado = total_reprovados = 0
-    if not df_checks_filtrado.empty:
-        series_with_checks = df_checks_filtrado["numero_serie"].unique()
-        aprovados = 0
-        total_reprovados = 0
-        for serie in series_with_checks:
-            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-            teve_reinspecao = (checks["reinspecao"] == "Sim").any()
-            aprovado = False if teve_reinspecao else (checks.tail(1).iloc[0]["produto_reprovado"] == "Não")
-            if aprovado:
-                aprovados += 1
-            else:
-                total_reprovados += 1
-        total_inspecionado = len(series_with_checks)
-        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
+    # ====== % Aprovação (fixo para Mola) ======
+    total_inspecionado = 0
+    aprovacao_perc = 100.0  # sempre 100%
+    total_reprovados = 0
 
     # ====== Cálculo do OEE ======
-    # Performance baseado na meta acumulada até agora (mesma base do atraso)
     if meta_acumulada > 0:
         performance_fraction = (total_lidos / meta_acumulada)
-        performance_fraction = max(min(performance_fraction, 1), 0)  # cap entre 0 e 1
+        performance_fraction = max(min(performance_fraction, 1), 0)
     else:
         performance_fraction = 0
 
     performance_percent = performance_fraction * 100
-    quality_fraction = (aprovacao_perc / 100)
+    quality_fraction = 1.0  # sempre 100% qualidade
     oee_percent = performance_fraction * quality_fraction * 100
 
     # ====== Cartões ======
@@ -434,7 +407,8 @@ def painel_dashboard_mola():
         <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;
         justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
-        <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1></div>
+        <h1 style="color:white;font-size:{fonte}">100%</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: 0</p></div>
         """, unsafe_allow_html=True)
 
     with col3:
@@ -467,44 +441,14 @@ def painel_dashboard_mola():
         fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
-            text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
+            text=f"Perf: {performance_percent:.2f}% | Qualid: 100.00%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-    # ====== Pareto NC ======
-    st.markdown("### 📊 Pareto das Não Conformidades - Mola")
-    if not df_checks_filtrado.empty:
-        df_nc = df_checks_filtrado[df_checks_filtrado["status"] == "Não Conforme"][["item", "numero_serie"]]
-        if not df_nc.empty:
-            pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
-            pareto.columns = ["Item", "Quantidade"]
-            pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+    # Pareto desabilitado para Mola
+    st.info("✅ Inspeção desativada para Mola — 100% de qualidade fixa.")
 
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=pareto["Item"], y=pareto["Quantidade"], text=pareto["Quantidade"], textposition="auto",
-                marker_color="lightskyblue", textfont=dict(size=14, color="white", family="Arial Black")
-            ))
-            fig.add_trace(go.Scatter(
-                x=pareto["Item"], y=pareto["%"], mode="lines+markers+text", yaxis="y2",
-                text=[f"{v:.1f}%" for v in pareto["%"]],
-                textposition="top center", textfont=dict(size=13, color="white", family="Arial Black"),
-                line=dict(width=3, color="white"), marker=dict(size=8, color="white")
-            ))
-            fig.update_layout(
-                height=400,
-                margin=dict(l=20, r=20, t=20, b=100),
-                yaxis=dict(showticklabels=False, showgrid=False),
-                yaxis2=dict(overlaying="y", side="right", range=[0, 150], showticklabels=False, showgrid=False),
-                bargap=0.25, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                legend=dict(x=0.82, y=1.2, font=dict(color="white"))
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Nenhuma não conformidade registrada para Mola.")
-    else:
-        st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto de Mola.")
 
 # ==============================
 # Main
