@@ -358,7 +358,9 @@ def painel_dashboard_mola():
         datetime.time(12, 0): 0,
         datetime.time(13, 0): 14,
         datetime.time(14, 0): 14,
-        datetime.time(15, 0): 8
+        datetime.time(15, 0): 8,
+        datetime.time(16, 0): 14,
+        datetime.time(17, 0): 1
     }
 
     total_lidos = len(df_mola)
