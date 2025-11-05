@@ -33,14 +33,6 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ==============================
 TZ = pytz.timezone("America/Sao_Paulo")
 
-
-
-
-
-
-
-
-
 # ==============================
 # Funções Supabase
 # ==============================
@@ -338,10 +330,11 @@ def painel_dashboard():
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
 
 # ==============================
-# Painel Dashboard Mola
+# Painel Dashboard Mola (usando a mesma lógica de meta do dashboard de produção)
 # ==============================
 def painel_dashboard_mola():
     hoje = datetime.datetime.now(TZ).date()
+    hora_atual = datetime.datetime.now(TZ)
 
     # ====== Filtro de data ======
     st.sidebar.markdown("### Filtro de Data - Mola")
@@ -355,25 +348,39 @@ def painel_dashboard_mola():
 
     # ====== Filtrar datas ======
     if not df_mola.empty:
-        df_mola = df_mola[(df_mola["data_hora"].dt.date >= data_inicio) & (df_mola["data_hora"].dt.date <= data_fim)]
+        df_mola = df_mola[(df_mola["data_hora"].dt.date >= data_inicio) &
+                          (df_mola["data_hora"].dt.date <= data_fim)]
 
-    # ====== Meta hora a hora (igual produção) ======
+    # ====== Cálculo de Atraso (mesma lógica do dashboard de produção) ======
     meta_hora = {
-        datetime.time(6,0):14, datetime.time(7,0):14, datetime.time(8,0):14,
-        datetime.time(9,0):14, datetime.time(10,0):14, datetime.time(11,0):14,
-        datetime.time(12,0):0, datetime.time(13,0):14, datetime.time(14,0):14, datetime.time(15,0):8
+        datetime.time(6, 0): 14,
+        datetime.time(7, 0): 14,
+        datetime.time(8, 0): 14,
+        datetime.time(9, 0): 14,
+        datetime.time(10, 0): 14,
+        datetime.time(11, 0): 14,
+        datetime.time(12, 0): 0,
+        datetime.time(13, 0): 14,
+        datetime.time(14, 0): 14,
+        datetime.time(15, 0): 8
     }
 
-    # ====== Cálculo do atraso cumulativo hora a hora ======
-    atraso = 0
-    if not df_mola.empty:
-        df_mola['hora'] = df_mola['data_hora'].dt.time
-        for h, meta in sorted(meta_hora.items()):
-            realizado_hora = len(df_mola[df_mola['hora'] == h])
-            atraso_hora = meta - realizado_hora
-            atraso += max(atraso_hora, 0)
-
     total_lidos = len(df_mola)
+    meta_acumulada = 0
+
+    for h, m in meta_hora.items():
+        horario_inicio = datetime.datetime.combine(hoje, h)
+        # Se horario_inicio não tem tz, localiza com TZ
+        if horario_inicio.tzinfo is None:
+            try:
+                horario_inicio = TZ.localize(horario_inicio)
+            except Exception:
+                # fallback: assume hora_atual is timezone-aware; convert to same tz
+                horario_inicio = horario_inicio.replace(tzinfo=hora_atual.tzinfo)
+        if hora_atual >= horario_inicio:
+            meta_acumulada += m
+
+    atraso = max(meta_acumulada - total_lidos, 0)
 
     # ====== % Aprovação ======
     if not df_checks.empty and not df_mola.empty:
@@ -398,11 +405,16 @@ def painel_dashboard_mola():
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
     # ====== Cálculo do OEE ======
-    meta_total = sum(meta_hora.values())
-    performance_fraction = max(1 - (atraso / meta_total), 0) if meta_total > 0 else 1
-    quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
-    oee_percent = performance_fraction * quality_fraction * 100
+    # Performance baseado na meta acumulada até agora (mesma base do atraso)
+    if meta_acumulada > 0:
+        performance_fraction = (total_lidos / meta_acumulada)
+        performance_fraction = max(min(performance_fraction, 1), 0)  # cap entre 0 e 1
+    else:
+        performance_fraction = 0
+
     performance_percent = performance_fraction * 100
+    quality_fraction = (aprovacao_perc / 100)
+    oee_percent = performance_fraction * quality_fraction * 100
 
     # ====== Cartões ======
     col1, col2, col3, col4 = st.columns(4)
@@ -410,18 +422,30 @@ def painel_dashboard_mola():
     fonte = "18px"
 
     with col1:
-        st.markdown(f"""<div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3><h1 style="color:white;font-size:{fonte}">{total_lidos}</h1></div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;
+        justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
+        <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1></div>
+        """, unsafe_allow_html=True)
 
     with col2:
-        st.markdown(f"""<div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3><h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1></div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;
+        justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
+        <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1></div>
+        """, unsafe_allow_html=True)
 
     with col3:
         cor = "#c53030" if atraso > 0 else "#38a169"
         texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
-        st.markdown(f"""<div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
-        <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;
+        justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">STATUS</h3>
+        <h1 style="color:white;font-size:{fonte}">{texto}</h1></div>
+        """, unsafe_allow_html=True)
 
     with col4:
         fig_oee = go.Figure(go.Indicator(
@@ -460,21 +484,21 @@ def painel_dashboard_mola():
             fig = go.Figure()
             fig.add_trace(go.Bar(
                 x=pareto["Item"], y=pareto["Quantidade"], text=pareto["Quantidade"], textposition="auto",
-                marker_color="lightskyblue", textfont=dict(size=14,color="white",family="Arial Black")
+                marker_color="lightskyblue", textfont=dict(size=14, color="white", family="Arial Black")
             ))
             fig.add_trace(go.Scatter(
                 x=pareto["Item"], y=pareto["%"], mode="lines+markers+text", yaxis="y2",
                 text=[f"{v:.1f}%" for v in pareto["%"]],
-                textposition="top center", textfont=dict(size=13,color="white",family="Arial Black"),
-                line=dict(width=3,color="white"), marker=dict(size=8,color="white")
+                textposition="top center", textfont=dict(size=13, color="white", family="Arial Black"),
+                line=dict(width=3, color="white"), marker=dict(size=8, color="white")
             ))
             fig.update_layout(
                 height=400,
-                margin=dict(l=20,r=20,t=20,b=100),
+                margin=dict(l=20, r=20, t=20, b=100),
                 yaxis=dict(showticklabels=False, showgrid=False),
-                yaxis2=dict(overlaying="y", side="right", range=[0,150], showticklabels=False, showgrid=False),
+                yaxis2=dict(overlaying="y", side="right", range=[0, 150], showticklabels=False, showgrid=False),
                 bargap=0.25, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                legend=dict(x=0.82,y=1.2,font=dict(color="white"))
+                legend=dict(x=0.82, y=1.2, font=dict(color="white"))
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -482,17 +506,15 @@ def painel_dashboard_mola():
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto de Mola.")
 
-
-
-
-# ==============================
-# Main
-# ==============================
 # ==============================
 # Main
 # ==============================
 def main():
     st.set_page_config(page_title="Dashboard Produção", layout="wide")
+
+    # 🔹 Atualiza automaticamente a cada 1 minuto (60.000 ms)
+    if AUTORELOAD_AVAILABLE:
+        st_autorefresh(interval=60000, key="dashboard_refresh")
 
     # 🔹 Lê o parâmetro da URL
     params = st.query_params
