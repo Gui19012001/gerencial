@@ -34,25 +34,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 TZ = pytz.timezone("America/Sao_Paulo")
 
 
-# ======== REMOVER ESPAÇOS SUPERIORES / COLAR DASH NO TOPO ========
-st.markdown("""
-    <style>
-        .block-container {
-            padding-top: 0rem !important;
-            padding-bottom: 0rem !important;
-        }
-        header, footer {visibility: hidden;}
-        section.main > div:first-child {
-            padding-top: 0 !important;
-            margin-top: 0 !important;
-        }
-        /* Sombras suaves para TV */
-        .card {
-            box-shadow: 0px 4px 12px rgba(0,0,0,0.4);
-            border-radius: 20px;
-        }
-    </style>
-""", unsafe_allow_html=True)
+
+
+
+
 
 
 
@@ -109,6 +94,38 @@ def _load_apontamentos():
     df = pd.DataFrame(data_total)
 
     if not df.empty:
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
+    return df
+
+# ==============================
+# Funções Supabase para apontamento_mola
+# ==============================
+def carregar_apontamentos_mola(force_reload=False):
+    if not force_reload:
+        @st.cache_data(ttl=60)
+        def _carregar():
+            return _load_apontamentos_mola()
+        return _carregar()
+    else:
+        return _load_apontamentos_mola()
+
+def _load_apontamentos_mola():
+    data_total = []
+    inicio = 0
+    passo = 1000
+
+    while True:
+        response = supabase.table("apontamentos_mola").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
+    if not df.empty and "data_hora" in df.columns:
         df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
 
     return df
@@ -320,23 +337,202 @@ def painel_dashboard():
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
 
+# ==============================
+# Painel Dashboard Mola
+# ==============================
+def painel_dashboard_mola():
+    hoje = datetime.datetime.now(TZ).date()
 
+    # ====== Filtro de data ======
+    st.sidebar.markdown("### Filtro de Data - Mola")
+    data_inicio = st.sidebar.date_input("Data Início (Mola)", hoje, key="mola_inicio")
+    data_fim = st.sidebar.date_input("Data Fim (Mola)", hoje, key="mola_fim")
+    force_reload = False
+
+    # ====== Carregar dados ======
+    df_mola = carregar_apontamentos_mola(force_reload=force_reload)
+    df_checks = carregar_checklists(force_reload=force_reload)
+
+    # ====== Filtrar datas ======
+    if not df_mola.empty:
+        df_mola = df_mola[(df_mola["data_hora"].dt.date >= data_inicio) & (df_mola["data_hora"].dt.date <= data_fim)]
+
+    # ====== Meta hora a hora (igual produção) ======
+    meta_hora = {
+        datetime.time(6,0):14, datetime.time(7,0):14, datetime.time(8,0):14,
+        datetime.time(9,0):14, datetime.time(10,0):14, datetime.time(11,0):14,
+        datetime.time(12,0):0, datetime.time(13,0):14, datetime.time(14,0):14, datetime.time(15,0):8
+    }
+
+    # ====== Cálculo do atraso cumulativo hora a hora ======
+    atraso = 0
+    if not df_mola.empty:
+        df_mola['hora'] = df_mola['data_hora'].dt.time
+        for h, meta in sorted(meta_hora.items()):
+            realizado_hora = len(df_mola[df_mola['hora'] == h])
+            atraso_hora = meta - realizado_hora
+            atraso += max(atraso_hora, 0)
+
+    total_lidos = len(df_mola)
+
+    # ====== % Aprovação ======
+    if not df_checks.empty and not df_mola.empty:
+        df_checks_filtrado = df_checks[df_checks["numero_serie"].isin(df_mola["numero_serie"].unique())]
+    else:
+        df_checks_filtrado = pd.DataFrame()
+
+    aprovacao_perc = total_inspecionado = total_reprovados = 0
+    if not df_checks_filtrado.empty:
+        series_with_checks = df_checks_filtrado["numero_serie"].unique()
+        aprovados = 0
+        total_reprovados = 0
+        for serie in series_with_checks:
+            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
+            teve_reinspecao = (checks["reinspecao"] == "Sim").any()
+            aprovado = False if teve_reinspecao else (checks.tail(1).iloc[0]["produto_reprovado"] == "Não")
+            if aprovado:
+                aprovados += 1
+            else:
+                total_reprovados += 1
+        total_inspecionado = len(series_with_checks)
+        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
+
+    # ====== Cálculo do OEE ======
+    meta_total = sum(meta_hora.values())
+    performance_fraction = max(1 - (atraso / meta_total), 0) if meta_total > 0 else 1
+    quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
+    oee_percent = performance_fraction * quality_fraction * 100
+    performance_percent = performance_fraction * 100
+
+    # ====== Cartões ======
+    col1, col2, col3, col4 = st.columns(4)
+    altura = 180
+    fonte = "18px"
+
+    with col1:
+        st.markdown(f"""<div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3><h1 style="color:white;font-size:{fonte}">{total_lidos}</h1></div>""", unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""<div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3><h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1></div>""", unsafe_allow_html=True)
+
+    with col3:
+        cor = "#c53030" if atraso > 0 else "#38a169"
+        texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
+        st.markdown(f"""<div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
+
+    with col4:
+        fig_oee = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=oee_percent,
+            number={'suffix': "%", 'font': {'size': 20}},
+            title={'text': "OEE", 'font': {'size': 14}},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "#1E90FF"},
+                'steps': [
+                    {'range': [0, 60], 'color': "#FF4C4C"},
+                    {'range': [60, 85], 'color': "#FFD700"},
+                    {'range': [85, 100], 'color': "#4CAF50"}
+                ],
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': 85}
+            }
+        ))
+        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
+        fig_oee.add_annotation(
+            x=0.5, y=-0.08, xref='paper', yref='paper',
+            text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
+            showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
+        )
+        st.plotly_chart(fig_oee, use_container_width=True)
+
+    # ====== Pareto NC ======
+    st.markdown("### 📊 Pareto das Não Conformidades - Mola")
+    if not df_checks_filtrado.empty:
+        df_nc = df_checks_filtrado[df_checks_filtrado["status"] == "Não Conforme"][["item", "numero_serie"]]
+        if not df_nc.empty:
+            pareto = df_nc.groupby("item")["numero_serie"].count().sort_values(ascending=False).reset_index()
+            pareto.columns = ["Item", "Quantidade"]
+            pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=pareto["Item"], y=pareto["Quantidade"], text=pareto["Quantidade"], textposition="auto",
+                marker_color="lightskyblue", textfont=dict(size=14,color="white",family="Arial Black")
+            ))
+            fig.add_trace(go.Scatter(
+                x=pareto["Item"], y=pareto["%"], mode="lines+markers+text", yaxis="y2",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center", textfont=dict(size=13,color="white",family="Arial Black"),
+                line=dict(width=3,color="white"), marker=dict(size=8,color="white")
+            ))
+            fig.update_layout(
+                height=400,
+                margin=dict(l=20,r=20,t=20,b=100),
+                yaxis=dict(showticklabels=False, showgrid=False),
+                yaxis2=dict(overlaying="y", side="right", range=[0,150], showticklabels=False, showgrid=False),
+                bargap=0.25, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                legend=dict(x=0.82,y=1.2,font=dict(color="white"))
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Nenhuma não conformidade registrada para Mola.")
+    else:
+        st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto de Mola.")
+
+
+
+
+# ==============================
+# Main
+# ==============================
 # ==============================
 # Main
 # ==============================
 def main():
     st.set_page_config(page_title="Dashboard Produção", layout="wide")
 
-    # Atualiza automaticamente a cada 1 minuto
-    if AUTORELOAD_AVAILABLE:
-        st_autorefresh(interval=10000, key="dashboard_refresh")
+    # 🔹 Lê o parâmetro da URL
+    params = st.query_params
+    painel_param = params.get("painel", ["geral"])[0].lower()  # valor padrão
 
-    st.title("📊 Dashboard de Produção")
-    painel_dashboard()
+    # 🔹 Define o painel atual (URL tem prioridade)
+    painel_opcoes = ["Produção Geral", "Mola"]
+    if painel_param == "mola":
+        painel_default = "Mola"
+    else:
+        painel_default = "Produção Geral"
 
-    # Hora da última atualização
+    # 🔹 Selectbox sincronizado com a URL
+    painel = st.sidebar.selectbox(
+        "Escolha o Painel", 
+        painel_opcoes, 
+        key="select_painel_dashboard", 
+        index=painel_opcoes.index(painel_default)
+    )
+
+    # 🔹 Atualiza a URL automaticamente ao mudar
+    if painel == "Mola":
+        st.query_params.update({"painel": "mola"})
+    else:
+        st.query_params.update({"painel": "geral"})
+
+    # 🔹 Renderiza o painel correto
+    if painel == "Produção Geral":
+        painel_dashboard()
+    else:
+        painel_dashboard_mola()
+
+    # 🔹 Mostra horário da atualização
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
-    st.markdown(f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>", 
+        unsafe_allow_html=True
+    )
+
 
 if __name__ == "__main__":
     main()
+
