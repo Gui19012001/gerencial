@@ -122,9 +122,40 @@ def _load_apontamentos_mola():
 
     return df
 
+# ==============================
+# Funções Supabase para checklist de mola
+# ==============================
+def carregar_checklists_mola(force_reload=False):
+    if not force_reload:
+        @st.cache_data(ttl=60)
+        def _carregar():
+            return _load_checklists_mola()
+        return _carregar()
+    else:
+        return _load_checklists_mola()
+
+def _load_checklists_mola():
+    data_total = []
+    inicio = 0
+    passo = 1000
+
+    while True:
+        response = supabase.table("checklists_mola_detalhes").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
+    if not df.empty and "data_hora" in df.columns:
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
+    return df
 
 # ==============================
-# Painel Dashboard
+# Painel Dashboard (Produção Geral)
 # ==============================
 def painel_dashboard():
     hoje = datetime.datetime.now(TZ).date()
@@ -186,8 +217,17 @@ def painel_dashboard():
         total_reprovados = 0
         for serie in series_with_checks:
             checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-            teve_reinspecao = (checks["reinspecao"] == "Sim").any()
-            aprovado = False if teve_reinspecao else (checks.tail(1).iloc[0]["produto_reprovado"] == "Não")
+            teve_reinspecao = (checks.get("reinspecao") == "Sim").any() if "reinspecao" in checks.columns else False
+
+            # Preferir campo produto_reprovado se existir, senão inferir via status
+            if "produto_reprovado" in checks.columns:
+                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
+                aprovado = False if teve_reinspecao else (str(ultimo_produto_reprovado).strip().lower() == "não")
+            else:
+                # se existir coluna status, considerar última linha: se status == "Não Conforme" => reprovado
+                ultimo_status = checks.tail(1).iloc[0].get("status", "")
+                aprovado = False if teve_reinspecao else (str(ultimo_status).strip().lower() != "não conforme")
+
             if aprovado:
                 aprovados += 1
             else:
@@ -262,7 +302,7 @@ def painel_dashboard():
     st.markdown("### 📊 Pareto das Não Conformidades")
 
     if not df_checks_filtrado.empty:
-        df_nc = df_checks_filtrado[df_checks_filtrado["status"] == "Não Conforme"][["item", "numero_serie"]]
+        df_nc = df_checks_filtrado[df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"][["item", "numero_serie"]].dropna()
 
         if not df_nc.empty:
             pareto = (
@@ -329,6 +369,10 @@ def painel_dashboard():
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
 
+
+# ==============================
+# Painel Dashboard (Mola) - revisado para usar checklists_mola_detalhes
+# ==============================
 def painel_dashboard_mola():
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
@@ -341,11 +385,16 @@ def painel_dashboard_mola():
 
     # ====== Carregar dados ======
     df_mola = carregar_apontamentos_mola(force_reload=force_reload)
+    df_checks_mola = carregar_checklists_mola(force_reload=force_reload)
 
     # ====== Filtrar datas ======
     if not df_mola.empty:
         df_mola = df_mola[(df_mola["data_hora"].dt.date >= data_inicio) &
                           (df_mola["data_hora"].dt.date <= data_fim)]
+
+    if not df_checks_mola.empty:
+        df_checks_mola = df_checks_mola[(df_checks_mola["data_hora"].dt.date >= data_inicio) &
+                                        (df_checks_mola["data_hora"].dt.date <= data_fim)]
 
     # ====== Cálculo de Atraso (mesma lógica do dashboard de produção) ======
     meta_hora = {
@@ -375,10 +424,40 @@ def painel_dashboard_mola():
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ====== % Aprovação (fixo para Mola) ======
+    # ====== Cálculo da Qualidade (Mola) usando checklists_mola_detalhes ======
+    aprovacao_perc = 0.0
     total_inspecionado = 0
-    aprovacao_perc = 100.0  # sempre 100%
     total_reprovados = 0
+
+    if not df_checks_mola.empty and not df_mola.empty:
+        df_checks_filtrado = df_checks_mola[df_checks_mola["numero_serie"].isin(df_mola["numero_serie"].unique())]
+    else:
+        df_checks_filtrado = pd.DataFrame()
+
+    if not df_checks_filtrado.empty:
+        series_unicas = df_checks_filtrado["numero_serie"].unique()
+        aprovados = 0
+        total_reprovados = 0
+
+        for serie in series_unicas:
+            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
+            teve_reinspecao = (checks.get("reinspecao") == "Sim").any() if "reinspecao" in checks.columns else False
+
+            # Preferir campo produto_reprovado se existir, senão inferir via status
+            if "produto_reprovado" in checks.columns:
+                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
+                aprovado = False if teve_reinspecao else (str(ultimo_produto_reprovado).strip().lower() == "não")
+            else:
+                ultimo_status = checks.tail(1).iloc[0].get("status", "")
+                aprovado = False if teve_reinspecao else (str(ultimo_status).strip().lower() != "não conforme")
+
+            if aprovado:
+                aprovados += 1
+            else:
+                total_reprovados += 1
+
+        total_inspecionado = len(series_unicas)
+        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0.0
 
     # ====== Cálculo do OEE ======
     if meta_acumulada > 0:
@@ -388,7 +467,7 @@ def painel_dashboard_mola():
         performance_fraction = 0
 
     performance_percent = performance_fraction * 100
-    quality_fraction = 1.0  # sempre 100% qualidade
+    quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
     oee_percent = performance_fraction * quality_fraction * 100
 
     # ====== Cartões ======
@@ -409,8 +488,8 @@ def painel_dashboard_mola():
         <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;
         justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
-        <h1 style="color:white;font-size:{fonte}">100%</h1>
-        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: 0</p></div>
+        <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p></div>
         """, unsafe_allow_html=True)
 
     with col3:
@@ -443,14 +522,70 @@ def painel_dashboard_mola():
         fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
-            text=f"Perf: {performance_percent:.2f}% | Qualid: 100.00%",
+            text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-    # Pareto desabilitado para Mola
-    st.info("✅ Inspeção desativada para Mola — 100% de qualidade fixa.")
+    # ====== Pareto das Não Conformidades – Mola ======
+    st.markdown("### 📊 Pareto das Não Conformidades – Mola")
 
+    if not df_checks_filtrado.empty:
+        df_nc = df_checks_filtrado[df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"][["item", "numero_serie"]].dropna()
+
+        if not df_nc.empty:
+            pareto = (
+                df_nc.groupby("item")["numero_serie"]
+                .count()
+                .sort_values(ascending=False)
+                .reset_index()
+            )
+            pareto.columns = ["Item", "Quantidade"]
+            pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+
+            fig = go.Figure()
+
+            fig.add_trace(go.Bar(
+                x=pareto["Item"],
+                y=pareto["Quantidade"],
+                text=pareto["Quantidade"],
+                textposition="auto",
+                textfont=dict(size=14, color="white", family="Arial Black"),
+                marker_color="lightskyblue"
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=pareto["Item"],
+                y=pareto["%"],
+                mode="lines+markers+text",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center",
+                textfont=dict(size=13, color="white", family="Arial Black"),
+                yaxis="y2",
+                line=dict(width=3, color="white"),
+                marker=dict(size=8, color="white")
+            ))
+
+            fig.update_layout(
+                height=300,
+                margin=dict(l=20, r=20, t=20, b=100),
+                yaxis=dict(showticklabels=False, showgrid=False),
+                yaxis2=dict(
+                    overlaying="y",
+                    side="right",
+                    range=[0, 150],
+                    showticklabels=False,
+                    showgrid=False,
+                ),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Nenhuma não conformidade registrada na Mola.")
+    else:
+        st.warning("Nenhum checklist disponível para gerar Pareto da Mola.")
 
 # ==============================
 # Main
@@ -462,12 +597,18 @@ def main():
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=60000, key="dashboard_refresh")
 
-    # 🔹 Lê o parâmetro da URL
+    # 🔹 Lê o parâmetro da URL corretamente (versão revisada)
     params = st.query_params
-    painel_param = params.get("painel", ["geral"])[0].lower()  # valor padrão
 
-    # 🔹 Define o painel atual (URL tem prioridade)
+    if "painel" in params:
+        painel_param = params["painel"].lower()
+    else:
+        painel_param = "geral"   # valor padrão
+
+    # 🔹 Opções disponíveis
     painel_opcoes = ["Produção Geral", "Mola"]
+
+    # 🔹 Define qual painel deve abrir (via URL)
     if painel_param == "mola":
         painel_default = "Mola"
     else:
@@ -475,17 +616,17 @@ def main():
 
     # 🔹 Selectbox sincronizado com a URL
     painel = st.sidebar.selectbox(
-        "Escolha o Painel", 
-        painel_opcoes, 
-        key="select_painel_dashboard", 
+        "Escolha o Painel",
+        painel_opcoes,
+        key="select_painel_dashboard",
         index=painel_opcoes.index(painel_default)
     )
 
-    # 🔹 Atualiza a URL automaticamente ao mudar
+    # 🔹 Atualiza a URL automaticamente ao mudar o painel
     if painel == "Mola":
-        st.query_params.update({"painel": "mola"})
+        st.query_params["painel"] = "mola"
     else:
-        st.query_params.update({"painel": "geral"})
+        st.query_params["painel"] = "geral"
 
     # 🔹 Renderiza o painel correto
     if painel == "Produção Geral":
@@ -496,7 +637,7 @@ def main():
     # 🔹 Mostra horário da atualização
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
     st.markdown(
-        f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>", 
+        f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
     )
 
