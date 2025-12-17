@@ -224,6 +224,7 @@ def _load_checklists_manga_pnm():
 # ==============================
 def painel_dashboard():
     hoje = datetime.datetime.now(TZ).date()
+    hora_atual = datetime.datetime.now(TZ)
 
     # ====== Captura automática da resolução da tela ======
     if "screen_height" not in st.session_state:
@@ -232,10 +233,7 @@ def painel_dashboard():
     st.markdown("""
         <script>
         const height = window.screen.height;
-        window.parent.postMessage(
-            {isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height},
-            "*"
-        );
+        window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height}, "*");
         </script>
     """, unsafe_allow_html=True)
 
@@ -262,35 +260,27 @@ def painel_dashboard():
             (df_checks["data_hora"].dt.date <= data_fim)
         ]
 
-    # =====================================================
-    # ====== CÁLCULO DE META E ATRASO (CORRIGIDO) ==========
-    # =====================================================
+    # ====== CÁLCULO DE ATRASO (CORRIGIDO – HORA FECHADA) ======
     meta_hora = {
         datetime.time(6,0):24, datetime.time(7,0):24, datetime.time(8,0):24,
         datetime.time(9,0):24, datetime.time(10,0):24, datetime.time(11,0):6,
-        datetime.time(12,0):20, datetime.time(13,0):22,
-        datetime.time(14,0):22, datetime.time(15,0):12
+        datetime.time(12,0):20, datetime.time(13,0):22, datetime.time(14,0):22,
+        datetime.time(15,0):12
     }
 
     total_lidos = len(df_apont)
-    meta_acumulada = 0.0
-    hora_atual = datetime.datetime.now(TZ)
+    meta_acumulada = 0
 
-    for hora_meta, meta in meta_hora.items():
-        inicio = TZ.localize(datetime.datetime.combine(hoje, hora_meta))
-        fim = inicio + datetime.timedelta(hours=1)
+    for h, m in meta_hora.items():
+        horario_fim = datetime.datetime.combine(hoje, h) + datetime.timedelta(hours=1)
+        if horario_fim.tzinfo is None:
+            horario_fim = TZ.localize(horario_fim)
 
-        # Hora totalmente encerrada
-        if hora_atual >= fim:
-            meta_acumulada += meta
+        # 👉 só soma a meta quando a hora FECHOU
+        if hora_atual >= horario_fim:
+            meta_acumulada += m
 
-        # Hora atual em andamento (proporcional)
-        elif inicio <= hora_atual < fim:
-            minutos_passados = (hora_atual - inicio).seconds / 60
-            proporcao = minutos_passados / 60
-            meta_acumulada += meta * proporcao
-
-    atraso = max(int(round(meta_acumulada - total_lidos)), 0)
+    atraso = max(meta_acumulada - total_lidos, 0)
 
     # ====== % Aprovação ======
     if not df_checks.empty and not df_apont.empty:
@@ -303,67 +293,81 @@ def painel_dashboard():
     aprovacao_perc = total_inspecionado = total_reprovados = 0
 
     if not df_checks_filtrado.empty:
-        series = df_checks_filtrado["numero_serie"].unique()
+        series_with_checks = df_checks_filtrado["numero_serie"].unique()
         aprovados = 0
         total_reprovados = 0
 
-        for serie in series:
+        for serie in series_with_checks:
             checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-
             teve_reinspecao = (
                 (checks.get("reinspecao") == "Sim").any()
                 if "reinspecao" in checks.columns else False
             )
 
             if "produto_reprovado" in checks.columns:
-                ultimo = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
-                aprovado = False if teve_reinspecao else str(ultimo).strip().lower() == "não"
+                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
+                aprovado = False if teve_reinspecao else (
+                    str(ultimo_produto_reprovado).strip().lower() == "não"
+                )
             else:
                 ultimo_status = checks.tail(1).iloc[0].get("status", "")
-                aprovado = False if teve_reinspecao else str(ultimo_status).strip().lower() != "não conforme"
+                aprovado = False if teve_reinspecao else (
+                    str(ultimo_status).strip().lower() != "não conforme"
+                )
 
             if aprovado:
                 aprovados += 1
             else:
                 total_reprovados += 1
 
-        total_inspecionado = len(series)
-        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
+        total_inspecionado = len(series_with_checks)
+        aprovacao_perc = (
+            (aprovados / total_inspecionado) * 100
+            if total_inspecionado > 0 else 0
+        )
 
     # ====== Esteira / Rodagem ======
     total_esteira = total_rodagem = 0
     if not df_apont.empty:
-        total_esteira = len(df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)])
-        total_rodagem = len(df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)])
+        df_esteira = df_apont[
+            df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)
+        ]
+        df_rodagem = df_apont[
+            df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)
+        ]
+        total_esteira = len(df_esteira)
+        total_rodagem = len(df_rodagem)
 
-    # ====== OEE ======
-    performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
+    # ====== Cálculo do OEE ======
+    performance_fraction = (
+        max(1 - (atraso / meta_acumulada), 0)
+        if meta_acumulada > 0 else 1
+    )
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
     oee_percent = performance_fraction * quality_fraction * 100
 
-    # ====== Cartões ======
+    # ====== Cartões Resumo + Gauge ======
     col1, col2, col3, col4 = st.columns(4)
     altura = 180
     fonte = "18px"
 
     with col1:
         st.markdown(f"""
-        <div style="background:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;
-        justify-content:center;align-items:center;border-radius:20px;">
+        <div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
-        <h1 style="color:white">{total_lidos}</h1>
-        <p style="color:#E3E3E3">Esteira: {total_esteira} | Rodagem: {total_rodagem}</p>
-        </div>
+        <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">
+        Esteira: {total_esteira} | Rodagem: {total_rodagem}
+        </p></div>
         """, unsafe_allow_html=True)
 
     with col2:
         st.markdown(f"""
-        <div style="background:#2f855a;height:{altura}px;display:flex;flex-direction:column;
-        justify-content:center;align-items:center;border-radius:20px;">
+        <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
-        <h1 style="color:white">{aprovacao_perc:.2f}%</h1>
-        <p style="color:#E3E3E3">Inspecionado: {total_inspecionado}</p>
+        <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -371,10 +375,9 @@ def painel_dashboard():
         cor = "#c53030" if atraso > 0 else "#38a169"
         texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
         st.markdown(f"""
-        <div style="background:{cor};height:{altura}px;display:flex;flex-direction:column;
-        justify-content:center;align-items:center;border-radius:20px;">
+        <div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">STATUS</h3>
-        <h1 style="color:white">{texto}</h1>
+        <h1 style="color:white;font-size:{fonte}">{texto}</h1>
         </div>
         """, unsafe_allow_html=True)
 
@@ -382,27 +385,46 @@ def painel_dashboard():
         fig_oee = go.Figure(go.Indicator(
             mode="gauge+number",
             value=oee_percent,
-            number={'suffix': "%"},
-            title={'text': "OEE"},
+            number={'suffix': "%", 'font': {'size': 20}},
+            title={'text': "OEE", 'font': {'size': 14}},
             gauge={
                 'axis': {'range': [0, 100]},
+                'bar': {'color': "#1E90FF"},
                 'steps': [
                     {'range': [0, 60], 'color': "#FF4C4C"},
                     {'range': [60, 85], 'color': "#FFD700"},
                     {'range': [85, 100], 'color': "#4CAF50"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'value': 85}
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 85
+                }
             }
         ))
-        fig_oee.update_layout(height=altura, margin=dict(t=30, b=10))
+
+        fig_oee.update_layout(
+            height=altura,
+            margin={'l':10,'r':10,'t':30,'b':10},
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+
+        fig_oee.add_annotation(
+            x=0.5, y=-0.08,
+            xref='paper', yref='paper',
+            text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
+            showarrow=False,
+            font={'size': 12, 'color': '#E3E3E3'}
+        )
+
         st.plotly_chart(fig_oee, use_container_width=True)
 
-    # ====== Pareto ======
+    # ====== Pareto das Não Conformidades ======
     st.markdown("### 📊 Pareto das Não Conformidades")
 
     if not df_checks_filtrado.empty:
         df_nc = df_checks_filtrado[
-            df_checks_filtrado["status"].str.lower().str.strip() == "não conforme"
+            df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"
         ][["item", "numero_serie"]].dropna()
 
         if not df_nc.empty:
@@ -416,19 +438,53 @@ def painel_dashboard():
             pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
 
             fig = go.Figure()
-            fig.add_bar(x=pareto["Item"], y=pareto["Quantidade"])
-            fig.add_scatter(x=pareto["Item"], y=pareto["%"], yaxis="y2", mode="lines+markers")
+
+            fig.add_trace(go.Bar(
+                x=pareto["Item"],
+                y=pareto["Quantidade"],
+                text=pareto["Quantidade"],
+                textposition="auto",
+                textfont=dict(size=14, color="white", family="Arial Black"),
+                marker_color="lightskyblue"
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=pareto["Item"],
+                y=pareto["%"],
+                mode="lines+markers+text",
+                yaxis="y2",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center",
+                textfont=dict(size=13, color="white", family="Arial Black"),
+                line=dict(width=3, color="white"),
+                marker=dict(size=8, color="white")
+            ))
+
+            screen_height = st.session_state.get("screen_height", 1080)
+            pareto_height = 400 if screen_height < 1080 else 300
 
             fig.update_layout(
-                yaxis2=dict(overlaying="y", side="right", range=[0, 150]),
-                margin=dict(b=100)
+                height=pareto_height,
+                margin=dict(l=20, r=20, t=20, b=100),
+                yaxis=dict(showticklabels=False, showgrid=False),
+                yaxis2=dict(
+                    overlaying="y",
+                    side="right",
+                    range=[0, 150],
+                    showticklabels=False,
+                    showgrid=False
+                ),
+                bargap=0.25,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
             )
 
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Nenhuma não conformidade registrada.")
     else:
-        st.warning("⚠️ Nenhum checklist disponível.")
+        st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
+
 
 
 
