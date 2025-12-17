@@ -454,14 +454,20 @@ def painel_dashboard_mola():
 
     # ====== Filtrar datas ======
     if not df_mola.empty:
-        df_mola = df_mola[(df_mola["data_hora"].dt.date >= data_inicio) &
-                          (df_mola["data_hora"].dt.date <= data_fim)]
+        df_mola = df_mola[
+            (df_mola["data_hora"].dt.date >= data_inicio) &
+            (df_mola["data_hora"].dt.date <= data_fim)
+        ]
 
     if not df_checks_mola.empty:
-        df_checks_mola = df_checks_mola[(df_checks_mola["data_hora"].dt.date >= data_inicio) &
-                                        (df_checks_mola["data_hora"].dt.date <= data_fim)]
+        df_checks_mola = df_checks_mola[
+            (df_checks_mola["data_hora"].dt.date >= data_inicio) &
+            (df_checks_mola["data_hora"].dt.date <= data_fim)
+        ]
 
-    # ====== Cálculo de Atraso (mesma lógica do dashboard de produção) ======
+    # =====================================================
+    # ✅ CÁLCULO DE ATRASO (CORRIGIDO – SÓ HORA FECHADA)
+    # =====================================================
     meta_hora = {
         datetime.time(6, 0): 14,
         datetime.time(7, 0): 14,
@@ -474,28 +480,35 @@ def painel_dashboard_mola():
         datetime.time(14, 0): 14,
         datetime.time(15, 0): 8,
         datetime.time(16, 0): 14,
-        datetime.time(17, 0): 1
+        datetime.time(17, 0): 1,
     }
 
     total_lidos = len(df_mola)
     meta_acumulada = 0
 
+    # 🔒 Hora atual truncada (ex: 09:54 → 09:00)
+    hora_atual_fechada = hora_atual.replace(minute=0, second=0, microsecond=0)
+
     for h, m in meta_hora.items():
         horario_inicio = datetime.datetime.combine(hoje, h)
         if horario_inicio.tzinfo is None:
             horario_inicio = TZ.localize(horario_inicio)
-        if hora_atual >= horario_inicio:
+
+        # 👉 só soma se a hora JÁ TERMINOU
+        if horario_inicio < hora_atual_fechada:
             meta_acumulada += m
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ====== Cálculo da Qualidade (Mola) usando checklists_mola_detalhes ======
+    # ====== Cálculo da Qualidade (Mola) ======
     aprovacao_perc = 0.0
     total_inspecionado = 0
     total_reprovados = 0
 
     if not df_checks_mola.empty and not df_mola.empty:
-        df_checks_filtrado = df_checks_mola[df_checks_mola["numero_serie"].isin(df_mola["numero_serie"].unique())]
+        df_checks_filtrado = df_checks_mola[
+            df_checks_mola["numero_serie"].isin(df_mola["numero_serie"].unique())
+        ]
     else:
         df_checks_filtrado = pd.DataFrame()
 
@@ -508,7 +521,6 @@ def painel_dashboard_mola():
             checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
             teve_reinspecao = (checks.get("reinspecao") == "Sim").any() if "reinspecao" in checks.columns else False
 
-            # Preferir campo produto_reprovado se existir, senão inferir via status
             if "produto_reprovado" in checks.columns:
                 ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
                 aprovado = False if teve_reinspecao else (str(ultimo_produto_reprovado).strip().lower() == "não")
@@ -526,7 +538,7 @@ def painel_dashboard_mola():
 
     # ====== Cálculo do OEE ======
     if meta_acumulada > 0:
-        performance_fraction = (total_lidos / meta_acumulada)
+        performance_fraction = total_lidos / meta_acumulada
         performance_fraction = max(min(performance_fraction, 1), 0)
     else:
         performance_fraction = 0
@@ -592,11 +604,13 @@ def painel_dashboard_mola():
         )
         st.plotly_chart(fig_oee, use_container_width=True)
 
-    # ====== Pareto das Não Conformidades – Mola ======
+    # ====== Pareto ======
     st.markdown("### 📊 Pareto das Não Conformidades – Mola")
 
     if not df_checks_filtrado.empty:
-        df_nc = df_checks_filtrado[df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"][["item", "numero_serie"]].dropna()
+        df_nc = df_checks_filtrado[
+            df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"
+        ][["item", "numero_serie"]].dropna()
 
         if not df_nc.empty:
             pareto = (
@@ -609,7 +623,6 @@ def painel_dashboard_mola():
             pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
 
             fig = go.Figure()
-
             fig.add_trace(go.Bar(
                 x=pareto["Item"],
                 y=pareto["Quantidade"],
@@ -618,7 +631,6 @@ def painel_dashboard_mola():
                 textfont=dict(size=14, color="white", family="Arial Black"),
                 marker_color="lightskyblue"
             ))
-
             fig.add_trace(go.Scatter(
                 x=pareto["Item"],
                 y=pareto["%"],
@@ -635,13 +647,8 @@ def painel_dashboard_mola():
                 height=300,
                 margin=dict(l=20, r=20, t=20, b=100),
                 yaxis=dict(showticklabels=False, showgrid=False),
-                yaxis2=dict(
-                    overlaying="y",
-                    side="right",
-                    range=[0, 150],
-                    showticklabels=False,
-                    showgrid=False,
-                ),
+                yaxis2=dict(overlaying="y", side="right", range=[0, 150],
+                            showticklabels=False, showgrid=False),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
             )
@@ -651,6 +658,7 @@ def painel_dashboard_mola():
             st.info("Nenhuma não conformidade registrada na Mola.")
     else:
         st.warning("Nenhum checklist disponível para gerar Pareto da Mola.")
+
 
 
 # ==============================
