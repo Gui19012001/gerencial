@@ -154,6 +154,71 @@ def _load_checklists_mola():
 
     return df
 
+
+# ==============================
+# Funções Supabase para apontamentos Manga/PNM
+# ==============================
+def carregar_apontamentos_manga_pnm(force_reload=False):
+    if not force_reload:
+        @st.cache_data(ttl=60)
+        def _carregar():
+            return _load_apontamentos_manga_pnm()
+        return _carregar()
+    else:
+        return _load_apontamentos_manga_pnm()
+
+def _load_apontamentos_manga_pnm():
+    data_total = []
+    inicio = 0
+    passo = 1000
+
+    while True:
+        response = supabase.table("apontamentos_manga_pnm").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
+    if not df.empty and "data_hora" in df.columns:
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
+    return df
+
+# ==============================
+# Funções Supabase para checklists Manga/PNM
+# ==============================
+def carregar_checklists_manga_pnm(force_reload=False):
+    if not force_reload:
+        @st.cache_data(ttl=60)
+        def _carregar():
+            return _load_checklists_manga_pnm()
+        return _carregar()
+    else:
+        return _load_checklists_manga_pnm()
+
+def _load_checklists_manga_pnm():
+    data_total = []
+    inicio = 0
+    passo = 1000
+
+    while True:
+        response = supabase.table("checklists_manga_pnm_detalhes").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
+    if not df.empty and "data_hora" in df.columns:
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
+    return df
+
 # ==============================
 # Painel Dashboard (Produção Geral)
 # ==============================
@@ -587,6 +652,216 @@ def painel_dashboard_mola():
     else:
         st.warning("Nenhum checklist disponível para gerar Pareto da Mola.")
 
+
+# ==============================
+# Painel Dashboard (Manga / PNM)
+# ==============================
+def painel_dashboard_manga_pnm():
+    hoje = datetime.datetime.now(TZ).date()
+    hora_atual = datetime.datetime.now(TZ)
+
+    # ====== Captura automática da resolução da tela ======
+    if "screen_height" not in st.session_state:
+        st.session_state.screen_height = 1080  # padrão
+
+    st.markdown("""
+        <script>
+        const height = window.screen.height;
+        window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height}, "*");
+        </script>
+    """, unsafe_allow_html=True)
+
+    # ====== Filtro de data ======
+    st.sidebar.markdown("### Filtro de Data - Manga/PNM")
+    data_inicio = st.sidebar.date_input("Data Início (Manga/PNM)", hoje, key="manga_inicio")
+    data_fim = st.sidebar.date_input("Data Fim (Manga/PNM)", hoje, key="manga_fim")
+    force_reload = False
+
+    # ====== Carregar dados ======
+    df_apont = carregar_apontamentos_manga_pnm(force_reload=force_reload)
+    df_checks = carregar_checklists_manga_pnm(force_reload=force_reload)
+
+    # ====== Aplicar filtros ======
+    if not df_apont.empty:
+        df_apont = df_apont[(df_apont["data_hora"].dt.date >= data_inicio) & (df_apont["data_hora"].dt.date <= data_fim)]
+    if not df_checks.empty:
+        df_checks = df_checks[(df_checks["data_hora"].dt.date >= data_inicio) & (df_checks["data_hora"].dt.date <= data_fim)]
+
+    # ====== Cálculo de Atraso ======
+    meta_hora = {
+        datetime.time(6,0):4, datetime.time(7,0):4, datetime.time(8,0):4,
+        datetime.time(9,0):4, datetime.time(10,0):4, datetime.time(11,0):0,
+        datetime.time(12,0):4, datetime.time(13,0):4, datetime.time(14,0):4, datetime.time(15,0):4
+    }
+
+    total_lidos = len(df_apont)
+    meta_acumulada = 0
+    for h, m in meta_hora.items():
+        horario_inicio = datetime.datetime.combine(hoje, h)
+        if horario_inicio.tzinfo is None:
+            horario_inicio = TZ.localize(horario_inicio)
+        if hora_atual >= horario_inicio:
+            meta_acumulada += m
+    atraso = max(meta_acumulada - total_lidos, 0)
+
+    # ====== % Aprovação ======
+    if not df_checks.empty and not df_apont.empty:
+        df_checks_filtrado = df_checks[df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())]
+    else:
+        df_checks_filtrado = pd.DataFrame()
+
+    aprovacao_perc = total_inspecionado = total_reprovados = 0
+    if not df_checks_filtrado.empty:
+        series_with_checks = df_checks_filtrado["numero_serie"].unique()
+        aprovados = 0
+        total_reprovados = 0
+        for serie in series_with_checks:
+            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
+            teve_reinspecao = (checks.get("reinspecao") == "Sim").any() if "reinspecao" in checks.columns else False
+
+            if "produto_reprovado" in checks.columns:
+                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
+                aprovado = False if teve_reinspecao else (str(ultimo_produto_reprovado).strip().lower() == "não")
+            else:
+                ultimo_status = checks.tail(1).iloc[0].get("status", "")
+                aprovado = False if teve_reinspecao else (str(ultimo_status).strip().lower() != "não conforme")
+
+            if aprovado:
+                aprovados += 1
+            else:
+                total_reprovados += 1
+        total_inspecionado = len(series_with_checks)
+        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
+
+    # ====== Esteira / Rodagem ======
+    total_esteira = total_rodagem = 0
+    if not df_apont.empty:
+        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
+        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)]
+        total_esteira = len(df_esteira)
+        total_rodagem = len(df_rodagem)
+
+    # ====== Cálculo do OEE ======
+    performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
+    performance_percent = performance_fraction * 100
+    quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
+    oee_percent = performance_fraction * quality_fraction * 100
+
+    # ====== Cartões Resumo + Gauge ======
+    col1, col2, col3, col4 = st.columns(4)
+    altura = 180
+    fonte = "18px"
+
+    with col1:
+        st.markdown(f"""
+        <div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3><h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">Esteira: {total_esteira} | Rodagem: {total_rodagem}</p></div>""", unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+        <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3><h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
+        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p></div>""", unsafe_allow_html=True)
+
+    with col3:
+        cor = "#c53030" if atraso > 0 else "#38a169"
+        texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
+        st.markdown(f"""
+        <div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <h3 style="color:white;font-size:{fonte}">STATUS</h3><h1 style="color:white;font-size:{fonte}">{texto}</h1></div>""", unsafe_allow_html=True)
+
+    with col4:
+        fig_oee = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=oee_percent,
+            number={'suffix': "%", 'font': {'size': 20}},
+            title={'text': "OEE", 'font': {'size': 14}},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "#1E90FF"},
+                'steps': [
+                    {'range': [0, 60], 'color': "#FF4C4C"},
+                    {'range': [60, 85], 'color': "#FFD700"},
+                    {'range': [85, 100], 'color': "#4CAF50"}
+                ],
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': 85}
+            }
+        ))
+        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
+        fig_oee.add_annotation(
+            x=0.5, y=-0.08, xref='paper', yref='paper',
+            text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
+            showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
+        )
+        st.plotly_chart(fig_oee, use_container_width=True)
+
+    # ====== Pareto das Não Conformidades ======
+    st.markdown("### 📊 Pareto das Não Conformidades - Manga/PNM")
+
+    if not df_checks_filtrado.empty:
+        df_nc = df_checks_filtrado[df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"][["item", "numero_serie"]].dropna()
+
+        if not df_nc.empty:
+            pareto = (
+                df_nc.groupby("item")["numero_serie"]
+                .count()
+                .sort_values(ascending=False)
+                .reset_index()
+            )
+            pareto.columns = ["Item", "Quantidade"]
+            pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=pareto["Item"],
+                y=pareto["Quantidade"],
+                name="NC",
+                text=pareto["Quantidade"],
+                textposition="auto",
+                textfont=dict(size=14, color="white", family="Arial Black"),
+                marker_color="lightskyblue"
+            ))
+            fig.add_trace(go.Scatter(
+                x=pareto["Item"],
+                y=pareto["%"],
+                mode="lines+markers+text",
+                name="% Acumulado",
+                yaxis="y2",
+                text=[f"{v:.1f}%" for v in pareto["%"]],
+                textposition="top center",
+                textfont=dict(size=13, color="white", family="Arial Black"),
+                line=dict(width=3, color="white"),
+                marker=dict(size=8, color="white")
+            ))
+
+            screen_height = st.session_state.get("screen_height", 1080)
+            pareto_height = 400 if screen_height < 1080 else 300
+
+            fig.update_layout(
+                height=pareto_height,
+                margin=dict(l=20, r=20, t=20, b=100),
+                yaxis=dict(title="", showticklabels=False, showgrid=False),
+                yaxis2=dict(
+                    overlaying="y",
+                    side="right",
+                    range=[0, 150],
+                    showticklabels=False,
+                    showgrid=False
+                ),
+                bargap=0.25,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Nenhuma não conformidade registrada no Manga/PNM.")
+    else:
+        st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto Manga/PNM.")
+
+
+
 # ==============================
 # Main
 # ==============================
@@ -606,11 +881,13 @@ def main():
         painel_param = "geral"   # valor padrão
 
     # 🔹 Opções disponíveis
-    painel_opcoes = ["Produção Geral", "Mola"]
+    painel_opcoes = ["Produção Geral", "Mola", "Manga/PNM"]
 
     # 🔹 Define qual painel deve abrir (via URL)
     if painel_param == "mola":
         painel_default = "Mola"
+    elif painel_param == "manga_pnm":
+        painel_default = "Manga/PNM"
     else:
         painel_default = "Produção Geral"
 
@@ -625,14 +902,18 @@ def main():
     # 🔹 Atualiza a URL automaticamente ao mudar o painel
     if painel == "Mola":
         st.query_params["painel"] = "mola"
+    elif painel == "Manga/PNM":
+        st.query_params["painel"] = "manga_pnm"
     else:
         st.query_params["painel"] = "geral"
 
     # 🔹 Renderiza o painel correto
     if painel == "Produção Geral":
         painel_dashboard()
-    else:
+    elif painel == "Mola":
         painel_dashboard_mola()
+    else:
+        painel_dashboard_manga_pnm()
 
     # 🔹 Mostra horário da atualização
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
@@ -644,4 +925,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
