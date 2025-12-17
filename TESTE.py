@@ -700,7 +700,7 @@ def painel_dashboard_manga_pnm():
         horario_inicio = datetime.datetime.combine(hoje, h)
         if horario_inicio.tzinfo is None:
             horario_inicio = TZ.localize(horario_inicio)
-        if hora_atual >= horario_inicio:
+        if hora_atual >= horario_fim:
             meta_acumulada += m
     atraso = max(meta_acumulada - total_lidos, 0)
 
