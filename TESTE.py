@@ -946,9 +946,8 @@ def painel_dashboard_manga_pnm():
                 text=[f"{v:.1f}%" for v in pareto["%"]],
                 textposition="top center"
             )
-
             screen_height = st.session_state.get("screen_height", 1080)
-            pareto_height = 400 if screen_height < 1080 else 300
+            pareto_height = max(300, int(screen_height * 0.3))
 
             fig.update_layout(
                 height=pareto_height,
