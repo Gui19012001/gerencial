@@ -108,7 +108,7 @@ def aplicar_layout_pareto(fig: go.Figure):
     fig.update_layout(
         height=pareto_height,
         autosize=True,
-        margin=dict(l=20, r=20, t=30, b=200),  # ✅ b maior evita corte na TV
+        margin=dict(l=20, r=20, t=50, b=200),  # ✅ b maior evita corte na TV
         yaxis=dict(showticklabels=False, showgrid=False),
         yaxis2=dict(
             overlaying="y",
