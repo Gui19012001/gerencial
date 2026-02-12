@@ -10,6 +10,15 @@ from pathlib import Path
 import plotly.graph_objects as go
 
 # ==============================
+# ✅ PAGE CONFIG (TEM QUE SER A PRIMEIRA CHAMADA STREAMLIT)
+# ==============================
+st.set_page_config(
+    page_title="Dashboard Produção",
+    layout="wide",
+    initial_sidebar_state="collapsed"  # melhor pra TV
+)
+
+# ==============================
 # Verificação do autorefresh
 # ==============================
 try:
@@ -32,6 +41,87 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Configurações iniciais
 # ==============================
 TZ = pytz.timezone("America/Sao_Paulo")
+
+# ==============================
+# ✅ CSS MODO TV (TIRA PADDING E EVITA CORTE)
+# ==============================
+def aplicar_css_tv(hide_sidebar=True):
+    st.markdown(
+        f"""
+        <style>
+        /* reduz padding padrão (TV costuma cortar embaixo) */
+        .block-container {{
+            padding-top: 0.6rem;
+            padding-bottom: 1.2rem;
+            padding-left: 1.2rem;
+            padding-right: 1.2rem;
+            max-width: 100%;
+        }}
+
+        /* remove header e toolbar */
+        header[data-testid="stHeader"] {{
+            display: none;
+        }}
+        div[data-testid="stToolbar"] {{
+            visibility: hidden;
+            height: 0%;
+            position: fixed;
+        }}
+
+        /* opcional: some com sidebar pra virar painel */
+        {"section[data-testid='stSidebar']{display:none;}" if hide_sidebar else ""}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ==============================
+# ✅ Captura altura de tela (pra dimensionar pareto)
+# ==============================
+def capturar_screen_height():
+    if "screen_height" not in st.session_state:
+        st.session_state.screen_height = 1080  # padrão
+
+    st.markdown(
+        """
+        <script>
+        const height = window.screen.height;
+        window.parent.postMessage(
+          {isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height},
+          "*"
+        );
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ==============================
+# ✅ Helper Pareto (layout seguro pra TV)
+# ==============================
+def aplicar_layout_pareto(fig: go.Figure):
+    screen_height = st.session_state.get("screen_height", 1080)
+
+    # altura proporcional + limites
+    pareto_height = int(screen_height * 0.34)
+    pareto_height = max(360, min(pareto_height, 520))
+
+    fig.update_layout(
+        height=pareto_height,
+        autosize=True,
+        margin=dict(l=20, r=20, t=30, b=140),  # ✅ b maior evita corte na TV
+        yaxis=dict(showticklabels=False, showgrid=False),
+        yaxis2=dict(
+            overlaying="y",
+            side="right",
+            range=[0, 150],
+            showticklabels=False,
+            showgrid=False
+        ),
+        xaxis=dict(automargin=True),          # ✅ evita cortar eixo/labels
+        bargap=0.25,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
 
 # ==============================
 # Funções Supabase
@@ -154,7 +244,6 @@ def _load_checklists_mola():
 
     return df
 
-
 # ==============================
 # Funções Supabase para apontamentos Manga/PNM
 # ==============================
@@ -226,28 +315,16 @@ def painel_dashboard():
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
 
-    # ====== Captura automática da resolução da tela ======
-    if "screen_height" not in st.session_state:
-        st.session_state.screen_height = 1080  # padrão
+    capturar_screen_height()
 
-    st.markdown("""
-        <script>
-        const height = window.screen.height;
-        window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height}, "*");
-        </script>
-    """, unsafe_allow_html=True)
-
-    # ====== Filtro de data ======
     st.sidebar.markdown("### Filtro de Data")
     data_inicio = st.sidebar.date_input("Data Início", hoje)
     data_fim = st.sidebar.date_input("Data Fim", hoje)
     force_reload = False
 
-    # ====== Carregar dados ======
     df_apont = carregar_apontamentos(force_reload=force_reload)
     df_checks = carregar_checklists(force_reload=force_reload)
 
-    # ====== Aplicar filtros ======
     if not df_apont.empty:
         df_apont = df_apont[
             (df_apont["data_hora"].dt.date >= data_inicio) &
@@ -260,7 +337,6 @@ def painel_dashboard():
             (df_checks["data_hora"].dt.date <= data_fim)
         ]
 
-    # ====== CÁLCULO DE ATRASO (CORRIGIDO – HORA FECHADA) ======
     meta_hora = {
         datetime.time(6,0):30, datetime.time(7,0):30, datetime.time(8,0):30,
         datetime.time(9,0):30, datetime.time(10,0):30, datetime.time(11,0):6,
@@ -275,14 +351,11 @@ def painel_dashboard():
         horario_fim = datetime.datetime.combine(hoje, h) + datetime.timedelta(hours=1)
         if horario_fim.tzinfo is None:
             horario_fim = TZ.localize(horario_fim)
-
-        # 👉 só soma a meta quando a hora FECHOU
         if hora_atual >= horario_fim:
             meta_acumulada += m
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ====== % Aprovação ======
     if not df_checks.empty and not df_apont.empty:
         df_checks_filtrado = df_checks[
             df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())
@@ -321,33 +394,20 @@ def painel_dashboard():
                 total_reprovados += 1
 
         total_inspecionado = len(series_with_checks)
-        aprovacao_perc = (
-            (aprovados / total_inspecionado) * 100
-            if total_inspecionado > 0 else 0
-        )
+        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    # ====== Esteira / Rodagem ======
     total_esteira = total_rodagem = 0
     if not df_apont.empty:
-        df_esteira = df_apont[
-            df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)
-        ]
-        df_rodagem = df_apont[
-            df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)
-        ]
+        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
+        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)]
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
-    # ====== Cálculo do OEE ======
-    performance_fraction = (
-        max(1 - (atraso / meta_acumulada), 0)
-        if meta_acumulada > 0 else 1
-    )
+    performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
     oee_percent = performance_fraction * quality_fraction * 100
 
-    # ====== Cartões Resumo + Gauge ======
     col1, col2, col3, col4 = st.columns(4)
     altura = 180
     fonte = "18px"
@@ -395,31 +455,17 @@ def painel_dashboard():
                     {'range': [60, 85], 'color': "#FFD700"},
                     {'range': [85, 100], 'color': "#4CAF50"}
                 ],
-                'threshold': {
-                    'line': {'color': "black", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 85
-                }
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': 85}
             }
         ))
-
-        fig_oee.update_layout(
-            height=altura,
-            margin={'l':10,'r':10,'t':30,'b':10},
-            paper_bgcolor='rgba(0,0,0,0)'
-        )
-
+        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
         fig_oee.add_annotation(
-            x=0.5, y=-0.08,
-            xref='paper', yref='paper',
+            x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
-            showarrow=False,
-            font={'size': 12, 'color': '#E3E3E3'}
+            showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
+        st.plotly_chart(fig_oee, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
-        st.plotly_chart(fig_oee, use_container_width=True)
-
-    # ====== Pareto das Não Conformidades ======
     st.markdown("### 📊 Pareto das Não Conformidades")
 
     if not df_checks_filtrado.empty:
@@ -438,7 +484,6 @@ def painel_dashboard():
             pareto["%"] = pareto["Quantidade"].cumsum() / pareto["Quantidade"].sum() * 100
 
             fig = go.Figure()
-
             fig.add_trace(go.Bar(
                 x=pareto["Item"],
                 y=pareto["Quantidade"],
@@ -447,7 +492,6 @@ def painel_dashboard():
                 textfont=dict(size=14, color="white", family="Arial Black"),
                 marker_color="lightskyblue"
             ))
-
             fig.add_trace(go.Scatter(
                 x=pareto["Item"],
                 y=pareto["%"],
@@ -460,52 +504,35 @@ def painel_dashboard():
                 marker=dict(size=8, color="white")
             ))
 
-            screen_height = st.session_state.get("screen_height", 1080)
-            pareto_height = 400 if screen_height < 1080 else 300
+            aplicar_layout_pareto(fig)
 
-            fig.update_layout(
-                height=pareto_height,
-                margin=dict(l=20, r=20, t=20, b=100),
-                yaxis=dict(showticklabels=False, showgrid=False),
-                yaxis2=dict(
-                    overlaying="y",
-                    side="right",
-                    range=[0, 150],
-                    showticklabels=False,
-                    showgrid=False
-                ),
-                bargap=0.25,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True}
             )
-
-            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Nenhuma não conformidade registrada.")
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto.")
 
-
-
-
 # ==============================
-# Painel Dashboard (Mola) - revisado para usar checklists_mola_detalhes
+# Painel Dashboard (Mola)
 # ==============================
 def painel_dashboard_mola():
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
 
-    # ====== Filtro de data ======
+    capturar_screen_height()
+
     st.sidebar.markdown("### Filtro de Data - Mola")
     data_inicio = st.sidebar.date_input("Data Início (Mola)", hoje, key="mola_inicio")
     data_fim = st.sidebar.date_input("Data Fim (Mola)", hoje, key="mola_fim")
     force_reload = False
 
-    # ====== Carregar dados ======
     df_mola = carregar_apontamentos_mola(force_reload=force_reload)
     df_checks_mola = carregar_checklists_mola(force_reload=force_reload)
 
-    # ====== Filtrar datas ======
     if not df_mola.empty:
         df_mola = df_mola[
             (df_mola["data_hora"].dt.date >= data_inicio) &
@@ -518,9 +545,6 @@ def painel_dashboard_mola():
             (df_checks_mola["data_hora"].dt.date <= data_fim)
         ]
 
-    # =====================================================
-    # ✅ CÁLCULO DE ATRASO (CORRIGIDO – SÓ HORA FECHADA)
-    # =====================================================
     meta_hora = {
         datetime.time(6, 0): 14,
         datetime.time(7, 0): 14,
@@ -539,21 +563,17 @@ def painel_dashboard_mola():
     total_lidos = len(df_mola)
     meta_acumulada = 0
 
-    # 🔒 Hora atual truncada (ex: 09:54 → 09:00)
     hora_atual_fechada = hora_atual.replace(minute=0, second=0, microsecond=0)
 
     for h, m in meta_hora.items():
         horario_inicio = datetime.datetime.combine(hoje, h)
         if horario_inicio.tzinfo is None:
             horario_inicio = TZ.localize(horario_inicio)
-
-        # 👉 só soma se a hora JÁ TERMINOU
         if horario_inicio < hora_atual_fechada:
             meta_acumulada += m
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ====== Cálculo da Qualidade (Mola) ======
     aprovacao_perc = 0.0
     total_inspecionado = 0
     total_reprovados = 0
@@ -589,7 +609,6 @@ def painel_dashboard_mola():
         total_inspecionado = len(series_unicas)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0.0
 
-    # ====== Cálculo do OEE ======
     if meta_acumulada > 0:
         performance_fraction = total_lidos / meta_acumulada
         performance_fraction = max(min(performance_fraction, 1), 0)
@@ -600,7 +619,6 @@ def painel_dashboard_mola():
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
     oee_percent = performance_fraction * quality_fraction * 100
 
-    # ====== Cartões ======
     col1, col2, col3, col4 = st.columns(4)
     altura = 180
     fonte = "18px"
@@ -655,9 +673,8 @@ def painel_dashboard_mola():
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
-        st.plotly_chart(fig_oee, use_container_width=True)
+        st.plotly_chart(fig_oee, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
-    # ====== Pareto ======
     st.markdown("### 📊 Pareto das Não Conformidades – Mola")
 
     if not df_checks_filtrado.empty:
@@ -696,23 +713,17 @@ def painel_dashboard_mola():
                 marker=dict(size=8, color="white")
             ))
 
-            fig.update_layout(
-                height=300,
-                margin=dict(l=20, r=20, t=20, b=100),
-                yaxis=dict(showticklabels=False, showgrid=False),
-                yaxis2=dict(overlaying="y", side="right", range=[0, 150],
-                            showticklabels=False, showgrid=False),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-            )
+            aplicar_layout_pareto(fig)
 
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True}
+            )
         else:
             st.info("Nenhuma não conformidade registrada na Mola.")
     else:
         st.warning("Nenhum checklist disponível para gerar Pareto da Mola.")
-
-
 
 # ==============================
 # Painel Dashboard (Manga / PNM)
@@ -721,31 +732,16 @@ def painel_dashboard_manga_pnm():
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
 
-    # ====== Captura automática da resolução da tela ======
-    if "screen_height" not in st.session_state:
-        st.session_state.screen_height = 1080  # padrão
+    capturar_screen_height()
 
-    st.markdown("""
-        <script>
-        const height = window.screen.height;
-        window.parent.postMessage(
-            {isStreamlitMessage: true, type: "streamlit:setComponentValue", key: "screen_height", value: height},
-            "*"
-        );
-        </script>
-    """, unsafe_allow_html=True)
-
-    # ====== Filtro de data ======
     st.sidebar.markdown("### Filtro de Data - Manga/PNM")
     data_inicio = st.sidebar.date_input("Data Início (Manga/PNM)", hoje, key="manga_inicio")
     data_fim = st.sidebar.date_input("Data Fim (Manga/PNM)", hoje, key="manga_fim")
     force_reload = False
 
-    # ====== Carregar dados ======
     df_apont = carregar_apontamentos_manga_pnm(force_reload=force_reload)
     df_checks = carregar_checklists_manga_pnm(force_reload=force_reload)
 
-    # ====== Aplicar filtros ======
     if not df_apont.empty:
         df_apont = df_apont[
             (df_apont["data_hora"].dt.date >= data_inicio) &
@@ -758,9 +754,6 @@ def painel_dashboard_manga_pnm():
             (df_checks["data_hora"].dt.date <= data_fim)
         ]
 
-    # =====================================================
-    # ✅ CÁLCULO DE ATRASO (ÚNICA PARTE ALTERADA)
-    # =====================================================
     meta_hora = {
         datetime.time(6, 0): 4,
         datetime.time(7, 0): 4,
@@ -781,16 +774,12 @@ def painel_dashboard_manga_pnm():
         horario_inicio = datetime.datetime.combine(hoje, h)
         if horario_inicio.tzinfo is None:
             horario_inicio = TZ.localize(horario_inicio)
-
         horario_fim = horario_inicio + datetime.timedelta(hours=1)
-
-        # 👉 só conta meta de hora JÁ ENCERRADA
         if hora_atual >= horario_fim:
             meta_acumulada += m
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    # ====== % Aprovação ======
     if not df_checks.empty and not df_apont.empty:
         df_checks_filtrado = df_checks[
             df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())
@@ -807,7 +796,6 @@ def painel_dashboard_manga_pnm():
 
         for serie in series_with_checks:
             checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-
             teve_reinspecao = (
                 (checks.get("reinspecao") == "Sim").any()
                 if "reinspecao" in checks.columns else False
@@ -832,7 +820,6 @@ def painel_dashboard_manga_pnm():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    # ====== Esteira / Rodagem ======
     total_esteira = total_rodagem = 0
     if not df_apont.empty:
         df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
@@ -840,13 +827,11 @@ def painel_dashboard_manga_pnm():
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
-    # ====== Cálculo do OEE ======
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
     oee_percent = performance_fraction * quality_fraction * 100
 
-    # ====== Cartões Resumo + Gauge ======
     col1, col2, col3, col4 = st.columns(4)
     altura = 180
     fonte = "18px"
@@ -901,19 +886,14 @@ def painel_dashboard_manga_pnm():
                 'threshold': {'line': {'color': "black", 'width': 4}, 'value': 85}
             }
         ))
-        fig_oee.update_layout(
-            height=altura,
-            margin={'l': 10, 'r': 10, 't': 30, 'b': 10},
-            paper_bgcolor='rgba(0,0,0,0)'
-        )
+        fig_oee.update_layout(height=altura, margin={'l': 10, 'r': 10, 't': 30, 'b': 10}, paper_bgcolor='rgba(0,0,0,0)')
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
-        st.plotly_chart(fig_oee, use_container_width=True)
+        st.plotly_chart(fig_oee, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
-    # ====== Pareto das Não Conformidades ======
     st.markdown("### 📊 Pareto das Não Conformidades - Manga/PNM")
 
     if not df_checks_filtrado.empty:
@@ -946,48 +926,39 @@ def painel_dashboard_manga_pnm():
                 text=[f"{v:.1f}%" for v in pareto["%"]],
                 textposition="top center"
             )
-            screen_height = st.session_state.get("screen_height", 1080)
-            pareto_height = max(500, int(screen_height * 0.2))
 
-            fig.update_layout(
-                height=pareto_height,
-                yaxis2=dict(overlaying="y", side="right", range=[0, 150]),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=20, r=20, t=20, b=100)
+            aplicar_layout_pareto(fig)
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True}
             )
-
-            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Nenhuma não conformidade registrada no Manga/PNM.")
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto Manga/PNM.")
 
-
-
-
 # ==============================
 # Main
 # ==============================
 def main():
-    st.set_page_config(page_title="Dashboard Produção", layout="wide")
+    # ✅ aplica CSS pra TV
+    aplicar_css_tv(hide_sidebar=True)
 
     # 🔹 Atualiza automaticamente a cada 1 minuto (60.000 ms)
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=60000, key="dashboard_refresh")
 
-    # 🔹 Lê o parâmetro da URL corretamente (versão revisada)
     params = st.query_params
 
     if "painel" in params:
         painel_param = params["painel"].lower()
     else:
-        painel_param = "geral"   # valor padrão
+        painel_param = "geral"
 
-    # 🔹 Opções disponíveis
     painel_opcoes = ["Produção Geral", "Mola", "Manga/PNM"]
 
-    # 🔹 Define qual painel deve abrir (via URL)
     if painel_param == "mola":
         painel_default = "Mola"
     elif painel_param == "manga_pnm":
@@ -995,7 +966,6 @@ def main():
     else:
         painel_default = "Produção Geral"
 
-    # 🔹 Selectbox sincronizado com a URL
     painel = st.sidebar.selectbox(
         "Escolha o Painel",
         painel_opcoes,
@@ -1003,7 +973,6 @@ def main():
         index=painel_opcoes.index(painel_default)
     )
 
-    # 🔹 Atualiza a URL automaticamente ao mudar o painel
     if painel == "Mola":
         st.query_params["painel"] = "mola"
     elif painel == "Manga/PNM":
@@ -1011,7 +980,6 @@ def main():
     else:
         st.query_params["painel"] = "geral"
 
-    # 🔹 Renderiza o painel correto
     if painel == "Produção Geral":
         painel_dashboard()
     elif painel == "Mola":
@@ -1019,13 +987,11 @@ def main():
     else:
         painel_dashboard_manga_pnm()
 
-    # 🔹 Mostra horário da atualização
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
     st.markdown(
         f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
     )
-
 
 if __name__ == "__main__":
     main()
