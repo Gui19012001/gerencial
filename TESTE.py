@@ -843,7 +843,7 @@ def painel_dashboard_manga_pnm():
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
         <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">
-        Esteira: {total_esteira} | Rodagem: {total_rodagem}
+        MANGA: {total_MANGA} | PNM: {total_PNM}
         </p></div>
         """, unsafe_allow_html=True)
 
