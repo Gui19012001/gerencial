@@ -895,13 +895,21 @@ def painel_dashboard_manga_pnm():
                 'threshold': {'line': {'color': "black", 'width': 4}, 'value': 85}
             }
         ))
-        fig_oee.update_layout(height=altura, margin={'l': 10, 'r': 10, 't': 30, 'b': 10}, paper_bgcolor='rgba(0,0,0,0)')
+        fig_oee.update_layout(
+            height=altura,
+            margin={'l': 10, 'r': 10, 't': 30, 'b': 10},
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
-        st.plotly_chart(fig_oee, use_container_width=True, config={"displayModeBar": False, "responsive": True})
+        st.plotly_chart(
+            fig_oee,
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True}
+        )
 
     st.markdown("### 📊 Pareto das Não Conformidades - Manga/PNM")
 
@@ -947,6 +955,7 @@ def painel_dashboard_manga_pnm():
             st.info("Nenhuma não conformidade registrada no Manga/PNM.")
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto Manga/PNM.")
+
 
 
 # ==============================
