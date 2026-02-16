@@ -822,8 +822,8 @@ def painel_dashboard_manga_pnm():
 
     total_esteira = total_rodagem = 0
     if not df_apont.empty:
-        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
-        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)]
+        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
+        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
         total_esteira = len(df_esteira)
         total_rodagem = len(df_rodagem)
 
