@@ -35,6 +35,10 @@ load_dotenv(dotenv_path=env_path)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados no teste.env")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==============================
@@ -396,12 +400,15 @@ def painel_dashboard():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    total_esteira = total_rodagem = 0
-    if not df_apont.empty:
-        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
-        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)]
-        total_esteira = len(df_esteira)
-        total_rodagem = len(df_rodagem)
+    # ✅ Totais no rodapé do card (Eixo / Manga / PNM)
+    total_eixo = total_manga = total_pnm = 0
+    if not df_apont.empty and "tipo_producao" in df_apont.columns:
+        df_eixo = df_apont[df_apont["tipo_producao"].str.contains("EIXO|ESTEIRA", case=False, na=False)]
+        df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
+        df_pnm = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
+        total_eixo = len(df_eixo)
+        total_manga = len(df_manga)
+        total_pnm = len(df_pnm)
 
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
@@ -418,7 +425,7 @@ def painel_dashboard():
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
         <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">
-        Esteira: {total_esteira} | Rodagem: {total_rodagem}
+        Eixo: {total_eixo} | Manga: {total_manga} | PNM: {total_pnm}
         </p></div>
         """, unsafe_allow_html=True)
 
@@ -820,13 +827,6 @@ def painel_dashboard_manga_pnm():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    total_esteira = total_rodagem = 0
-    if not df_apont.empty:
-        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
-        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
-        total_esteira = len(df_esteira)
-        total_rodagem = len(df_rodagem)
-
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
@@ -843,7 +843,7 @@ def painel_dashboard_manga_pnm():
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
         <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">
-        MANGA: {total_MANGA} | PNM: {total_PNM}
+        MANGA E PNM: {total_lidos}
         </p></div>
         """, unsafe_allow_html=True)
 
