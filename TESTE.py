@@ -827,6 +827,15 @@ def painel_dashboard_manga_pnm():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
+    # ✅ Totais separados (MANGA e PNM) para o rodapé do card
+    total_manga = 0
+    total_pnm = 0
+    if not df_apont.empty and "tipo_producao" in df_apont.columns:
+        df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
+        df_pnm = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
+        total_manga = len(df_manga)
+        total_pnm = len(df_pnm)
+
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 1
@@ -843,7 +852,7 @@ def painel_dashboard_manga_pnm():
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
         <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">
-        MANGA E PNM: {total_lidos}
+        MANGA: {total_manga} | PNM: {total_pnm}
         </p></div>
         """, unsafe_allow_html=True)
 
@@ -938,6 +947,7 @@ def painel_dashboard_manga_pnm():
             st.info("Nenhuma não conformidade registrada no Manga/PNM.")
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto Manga/PNM.")
+
 
 # ==============================
 # Main
