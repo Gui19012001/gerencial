@@ -15,7 +15,7 @@ import plotly.graph_objects as go
 st.set_page_config(
     page_title="Dashboard Produção",
     layout="wide",
-    initial_sidebar_state="collapsed"  # melhor pra TV
+    initial_sidebar_state="expanded"  # melhor pra TV
 )
 
 # ==============================
