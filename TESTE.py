@@ -342,9 +342,9 @@ def painel_dashboard():
         ]
 
     meta_hora = {
-        datetime.time(6,0):30, datetime.time(7,0):30, datetime.time(8,0):30,
-        datetime.time(9,0):30, datetime.time(10,0):30, datetime.time(11,0):6,
-        datetime.time(12,0):30, datetime.time(13,0):30, datetime.time(14,0):30,
+        datetime.time(6,0):26, datetime.time(7,0):26, datetime.time(8,0):26,
+        datetime.time(9,0):26, datetime.time(10,0):26, datetime.time(11,0):6,
+        datetime.time(12,0):26, datetime.time(13,0):26, datetime.time(14,0):26,
         datetime.time(15,0):12
     }
 
