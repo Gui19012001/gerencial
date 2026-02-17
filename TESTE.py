@@ -832,9 +832,10 @@ def painel_dashboard_manga_pnm():
     total_pnm = 0
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
         df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
-        df_pnm = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
+        df_pnm   = df_apont[df_apont["tipo_producao"].str.contains("PNM",   case=False, na=False)]
         total_manga = len(df_manga)
-        total_pnm = len(df_pnm)
+        total_pnm   = len(df_pnm)
+
 
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
@@ -855,6 +856,7 @@ def painel_dashboard_manga_pnm():
         MANGA: {total_manga} | PNM: {total_pnm}
         </p></div>
         """, unsafe_allow_html=True)
+
 
     with col2:
         st.markdown(f"""
