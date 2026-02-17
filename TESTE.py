@@ -827,12 +827,13 @@ def painel_dashboard_manga_pnm():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    total_esteira = total_rodagem = 0
-    if not df_apont.empty:
-        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
-        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("Pnm", case=False, na=False)]
-        total_esteira = len(df_esteira)
-        total_rodagem = len(df_rodagem)
+    # ✅ Totais no rodapé do card (Eixo / Manga / PNM)
+    total_eixo = total_manga = total_pnm = 0
+    if not df_apont.empty and "tipo_producao" in df_apont.columns:
+        df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
+        df_pnm = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
+        total_manga = len(df_manga)
+        total_pnm = len(df_pnm)
 
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
