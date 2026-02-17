@@ -84,7 +84,7 @@ def aplicar_css_tv(hide_sidebar=True):
 # ==============================
 def capturar_screen_height():
     if "screen_height" not in st.session_state:
-        st.session_state.screen_height = 1070  # padrão
+        st.session_state.screen_height = 1050  # padrão
 
     st.markdown(
         """
