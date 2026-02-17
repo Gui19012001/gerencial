@@ -389,7 +389,7 @@ def painel_dashboard():
             else:
                 ultimo_status = checks.tail(1).iloc[0].get("status", "")
                 aprovado = False if teve_reinspecao else (
-                    str(ultimo_status).strip().lower() != "não conforme"
+                    str(ultimo_status).strip().str.lower() != "não conforme"
                 )
 
             if aprovado:
@@ -956,8 +956,6 @@ def painel_dashboard_manga_pnm():
     else:
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto Manga/PNM.")
 
-
-
 # ==============================
 # Main
 # ==============================
@@ -1014,3 +1012,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
