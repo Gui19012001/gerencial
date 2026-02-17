@@ -827,15 +827,12 @@ def painel_dashboard_manga_pnm():
         total_inspecionado = len(series_with_checks)
         aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
 
-    # ✅ Totais separados (MANGA e PNM) para o rodapé do card
-    total_manga = 0
-    total_pnm = 0
-    if not df_apont.empty and "tipo_producao" in df_apont.columns:
-        df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
-        df_pnm   = df_apont[df_apont["tipo_producao"].str.contains("PNM",   case=False, na=False)]
-        total_manga = len(df_manga)
-        total_pnm   = len(df_pnm)
-
+    total_esteira = total_rodagem = 0
+    if not df_apont.empty:
+        df_esteira = df_apont[df_apont["tipo_producao"].str.contains("ESTEIRA", case=False, na=False)]
+        df_rodagem = df_apont[df_apont["tipo_producao"].str.contains("RODAGEM", case=False, na=False)]
+        total_esteira = len(df_esteira)
+        total_rodagem = len(df_rodagem)
 
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     performance_percent = performance_fraction * 100
@@ -853,10 +850,9 @@ def painel_dashboard_manga_pnm():
         <h3 style="color:white;font-size:{fonte}">TOTAL PRODUZIDO</h3>
         <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">
-        MANGA: {total_manga} | PNM: {total_pnm}
+        Esteira: {total_esteira} | Rodagem: {total_rodagem}
         </p></div>
         """, unsafe_allow_html=True)
-
 
     with col2:
         st.markdown(f"""
@@ -897,21 +893,13 @@ def painel_dashboard_manga_pnm():
                 'threshold': {'line': {'color': "black", 'width': 4}, 'value': 85}
             }
         ))
-        fig_oee.update_layout(
-            height=altura,
-            margin={'l': 10, 'r': 10, 't': 30, 'b': 10},
-            paper_bgcolor='rgba(0,0,0,0)'
-        )
+        fig_oee.update_layout(height=altura, margin={'l': 10, 'r': 10, 't': 30, 'b': 10}, paper_bgcolor='rgba(0,0,0,0)')
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
             showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
         )
-        st.plotly_chart(
-            fig_oee,
-            use_container_width=True,
-            config={"displayModeBar": False, "responsive": True}
-        )
+        st.plotly_chart(fig_oee, use_container_width=True, config={"displayModeBar": False, "responsive": True})
 
     st.markdown("### 📊 Pareto das Não Conformidades - Manga/PNM")
 
