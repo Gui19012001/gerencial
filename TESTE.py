@@ -15,7 +15,7 @@ import plotly.graph_objects as go
 st.set_page_config(
     page_title="Dashboard Produção",
     layout="wide",
-    initial_sidebar_state="expanded"  # melhor pra TV
+    initial_sidebar_state="collapsed"  # melhor pra TV
 )
 
 # ==============================
@@ -55,7 +55,7 @@ def aplicar_css_tv(hide_sidebar=True):
         <style>
         /* reduz padding padrão (TV costuma cortar embaixo) */
         .block-container {{
-            padding-top: 0.6rem;
+            padding-top: 0.8rem;
             padding-bottom: 1.2rem;
             padding-left: 1.2rem;
             padding-right: 1.2rem;
