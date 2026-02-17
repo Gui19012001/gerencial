@@ -35,6 +35,10 @@ load_dotenv(dotenv_path=env_path)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados no teste.env")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==============================
@@ -80,7 +84,7 @@ def aplicar_css_tv(hide_sidebar=True):
 # ==============================
 def capturar_screen_height():
     if "screen_height" not in st.session_state:
-        st.session_state.screen_height = 1080  # padrão
+        st.session_state.screen_height = 1070  # padrão
 
     st.markdown(
         """
@@ -108,7 +112,7 @@ def aplicar_layout_pareto(fig: go.Figure):
     fig.update_layout(
         height=pareto_height,
         autosize=True,
-        margin=dict(l=20, r=20, t=30, b=140),  # ✅ b maior evita corte na TV
+        margin=dict(l=20, r=20, t=30, b=200),  # ✅ b maior evita corte na TV
         yaxis=dict(showticklabels=False, showgrid=False),
         yaxis2=dict(
             overlaying="y",
