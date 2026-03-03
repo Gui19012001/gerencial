@@ -49,7 +49,7 @@ TZ = pytz.timezone("America/Sao_Paulo")
 # ==============================
 # ✅ CSS MODO TV (TIRA PADDING E EVITA CORTE)
 # ==============================
-def aplicar_css_tv(hide_sidebar=True):
+def aplicar_css_tv(hide_sidebar=False):
     st.markdown(
         f"""
         <style>
@@ -126,6 +126,65 @@ def aplicar_layout_pareto(fig: go.Figure):
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
+
+# ==============================
+# ✅ NOVO: Cálculo correto de aprovação (por série)
+# Regra: reprova se houver QUALQUER "não conforme" em qualquer etapa da série
+# + mantém regra de reinspeção (se tiver "Sim", reprova)
+# + se existir coluna produto_reprovado: reprova se houver qualquer valor diferente de "não"
+# ==============================
+def calcular_aprovacao(df_checks_filtrado: pd.DataFrame):
+    if df_checks_filtrado is None or df_checks_filtrado.empty:
+        return 0.0, 0, 0  # aprovacao_perc, total_inspecionado, total_reprovados
+
+    if "numero_serie" not in df_checks_filtrado.columns:
+        return 0.0, 0, 0
+
+    # normalização segura de colunas usadas
+    df = df_checks_filtrado.copy()
+
+    if "status" in df.columns:
+        df["status_norm"] = df["status"].astype(str).str.strip().str.lower()
+    else:
+        df["status_norm"] = ""
+
+    if "reinspecao" in df.columns:
+        df["reinspecao_norm"] = df["reinspecao"].astype(str).str.strip().str.lower()
+    else:
+        df["reinspecao_norm"] = ""
+
+    if "produto_reprovado" in df.columns:
+        df["prod_rep_norm"] = df["produto_reprovado"].astype(str).str.strip().str.lower()
+    else:
+        df["prod_rep_norm"] = ""
+
+    # define flags por linha
+    df["is_nc"] = df["status_norm"].isin(["não conforme", "nao conforme"])
+    df["has_reinspecao"] = df["reinspecao_norm"].isin(["sim", "s", "yes", "y", "true", "1"])
+    # produto_reprovado: aprovado só se for "não"
+    df["is_prod_reprovado"] = False
+    if "produto_reprovado" in df_checks_filtrado.columns:
+        df["is_prod_reprovado"] = df["prod_rep_norm"].ne("não") & df["prod_rep_norm"].ne("nao") & df["prod_rep_norm"].ne("") & df["prod_rep_norm"].ne("nan")
+
+    aprovados = 0
+    reprovados = 0
+
+    for serie, grp in df.groupby("numero_serie", dropna=True):
+        teve_reinspecao = grp["has_reinspecao"].any()
+        teve_nc = grp["is_nc"].any()
+        teve_prod_reprovado = grp["is_prod_reprovado"].any()
+
+        # ✅ regra final: se teve qualquer NC ou produto reprovado ou reinspeção, reprova
+        aprovado = not (teve_reinspecao or teve_nc or teve_prod_reprovado)
+
+        if aprovado:
+            aprovados += 1
+        else:
+            reprovados += 1
+
+    total_inspecionado = aprovados + reprovados
+    aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0.0
+    return aprovacao_perc, total_inspecionado, reprovados
 
 # ==============================
 # Funções Supabase
@@ -367,38 +426,8 @@ def painel_dashboard():
     else:
         df_checks_filtrado = pd.DataFrame()
 
-    aprovacao_perc = total_inspecionado = total_reprovados = 0
-
-    if not df_checks_filtrado.empty:
-        series_with_checks = df_checks_filtrado["numero_serie"].unique()
-        aprovados = 0
-        total_reprovados = 0
-
-        for serie in series_with_checks:
-            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-            teve_reinspecao = (
-                (checks.get("reinspecao") == "Sim").any()
-                if "reinspecao" in checks.columns else False
-            )
-
-            if "produto_reprovado" in checks.columns:
-                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
-                aprovado = False if teve_reinspecao else (
-                    str(ultimo_produto_reprovado).strip().lower() == "não"
-                )
-            else:
-                ultimo_status = checks.tail(1).iloc[0].get("status", "")
-                aprovado = False if teve_reinspecao else (
-                    str(ultimo_status).strip().str.lower() != "não conforme"
-                )
-
-            if aprovado:
-                aprovados += 1
-            else:
-                total_reprovados += 1
-
-        total_inspecionado = len(series_with_checks)
-        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
+    # ✅ NOVO: cálculo correto
+    aprovacao_perc, total_inspecionado, total_reprovados = calcular_aprovacao(df_checks_filtrado)
 
     # ✅ Totais no rodapé do card (Eixo / Manga / PNM)
     total_eixo = total_manga = total_pnm = 0
@@ -434,7 +463,7 @@ def painel_dashboard():
         <div style="background-color:#2f855a;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
         <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
-        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p>
+        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado} | Reprov: {total_reprovados}</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -477,7 +506,7 @@ def painel_dashboard():
 
     if not df_checks_filtrado.empty:
         df_nc = df_checks_filtrado[
-            df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"
+            df_checks_filtrado["status"].astype(str).str.strip().str.lower().isin(["não conforme", "nao conforme"])
         ][["item", "numero_serie"]].dropna()
 
         if not df_nc.empty:
@@ -581,10 +610,6 @@ def painel_dashboard_mola():
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    aprovacao_perc = 0.0
-    total_inspecionado = 0
-    total_reprovados = 0
-
     if not df_checks_mola.empty and not df_mola.empty:
         df_checks_filtrado = df_checks_mola[
             df_checks_mola["numero_serie"].isin(df_mola["numero_serie"].unique())
@@ -592,29 +617,8 @@ def painel_dashboard_mola():
     else:
         df_checks_filtrado = pd.DataFrame()
 
-    if not df_checks_filtrado.empty:
-        series_unicas = df_checks_filtrado["numero_serie"].unique()
-        aprovados = 0
-        total_reprovados = 0
-
-        for serie in series_unicas:
-            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-            teve_reinspecao = (checks.get("reinspecao") == "Sim").any() if "reinspecao" in checks.columns else False
-
-            if "produto_reprovado" in checks.columns:
-                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
-                aprovado = False if teve_reinspecao else (str(ultimo_produto_reprovado).strip().lower() == "não")
-            else:
-                ultimo_status = checks.tail(1).iloc[0].get("status", "")
-                aprovado = False if teve_reinspecao else (str(ultimo_status).strip().lower() != "não conforme")
-
-            if aprovado:
-                aprovados += 1
-            else:
-                total_reprovados += 1
-
-        total_inspecionado = len(series_unicas)
-        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0.0
+    # ✅ NOVO: cálculo correto
+    aprovacao_perc, total_inspecionado, total_reprovados = calcular_aprovacao(df_checks_filtrado)
 
     if meta_acumulada > 0:
         performance_fraction = total_lidos / meta_acumulada
@@ -644,7 +648,7 @@ def painel_dashboard_mola():
         justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
         <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
-        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado}</p></div>
+        <p style="color:#E3E3E3;font-size:{fonte}">Inspecionado: {total_inspecionado} | Reprov: {total_reprovados}</p></div>
         """, unsafe_allow_html=True)
 
     with col3:
@@ -686,7 +690,7 @@ def painel_dashboard_mola():
 
     if not df_checks_filtrado.empty:
         df_nc = df_checks_filtrado[
-            df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"
+            df_checks_filtrado["status"].astype(str).str.strip().str.lower().isin(["não conforme", "nao conforme"])
         ][["item", "numero_serie"]].dropna()
 
         if not df_nc.empty:
@@ -794,38 +798,8 @@ def painel_dashboard_manga_pnm():
     else:
         df_checks_filtrado = pd.DataFrame()
 
-    aprovacao_perc = total_inspecionado = total_reprovados = 0
-
-    if not df_checks_filtrado.empty:
-        series_with_checks = df_checks_filtrado["numero_serie"].unique()
-        aprovados = 0
-        total_reprovados = 0
-
-        for serie in series_with_checks:
-            checks = df_checks_filtrado[df_checks_filtrado["numero_serie"] == serie]
-            teve_reinspecao = (
-                (checks.get("reinspecao") == "Sim").any()
-                if "reinspecao" in checks.columns else False
-            )
-
-            if "produto_reprovado" in checks.columns:
-                ultimo_produto_reprovado = checks.tail(1).iloc[0].get("produto_reprovado", "Não")
-                aprovado = False if teve_reinspecao else (
-                    str(ultimo_produto_reprovado).strip().lower() == "não"
-                )
-            else:
-                ultimo_status = checks.tail(1).iloc[0].get("status", "")
-                aprovado = False if teve_reinspecao else (
-                    str(ultimo_status).strip().lower() != "não conforme"
-                )
-
-            if aprovado:
-                aprovados += 1
-            else:
-                total_reprovados += 1
-
-        total_inspecionado = len(series_with_checks)
-        aprovacao_perc = (aprovados / total_inspecionado) * 100 if total_inspecionado > 0 else 0
+    # ✅ NOVO: cálculo correto
+    aprovacao_perc, total_inspecionado, total_reprovados = calcular_aprovacao(df_checks_filtrado)
 
     # ✅ Totais separados (MANGA e PNM) para o rodapé do card
     total_manga = 0
@@ -863,7 +837,7 @@ def painel_dashboard_manga_pnm():
         <h3 style="color:white;font-size:{fonte}">% APROVAÇÃO</h3>
         <h1 style="color:white;font-size:{fonte}">{aprovacao_perc:.2f}%</h1>
         <p style="color:#E3E3E3;font-size:{fonte}">
-        Inspecionado: {total_inspecionado}
+        Inspecionado: {total_inspecionado} | Reprov: {total_reprovados}
         </p></div>
         """, unsafe_allow_html=True)
 
@@ -915,7 +889,7 @@ def painel_dashboard_manga_pnm():
 
     if not df_checks_filtrado.empty:
         df_nc = df_checks_filtrado[
-            df_checks_filtrado["status"].str.strip().str.lower() == "não conforme"
+            df_checks_filtrado["status"].astype(str).str.strip().str.lower().isin(["não conforme", "nao conforme"])
         ][["item", "numero_serie"]].dropna()
 
         if not df_nc.empty:
@@ -1012,9 +986,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
 
