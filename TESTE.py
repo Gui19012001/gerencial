@@ -775,7 +775,7 @@ def painel_dashboard_manga_pnm():
         datetime.time(12, 0): 4,
         datetime.time(13, 0): 4,
         datetime.time(14, 0): 4,
-        datetime.time(15, 0): 4,
+        datetime.time(15, 0): 2,
     }
 
     total_lidos = len(df_apont)
