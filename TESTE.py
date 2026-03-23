@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import datetime
 import pytz
-import base64
 from supabase import create_client
 import os
 from dotenv import load_dotenv
@@ -10,12 +9,12 @@ from pathlib import Path
 import plotly.graph_objects as go
 
 # ==============================
-# ✅ PAGE CONFIG (TEM QUE SER A PRIMEIRA CHAMADA STREAMLIT)
+# PAGE CONFIG
 # ==============================
 st.set_page_config(
     page_title="Dashboard Produção",
     layout="wide",
-    initial_sidebar_state="collapsed"  # melhor pra TV
+    initial_sidebar_state="collapsed"
 )
 
 # ==============================
@@ -47,13 +46,25 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 TZ = pytz.timezone("America/Sao_Paulo")
 
 # ==============================
-# ✅ CSS MODO TV (TIRA PADDING E EVITA CORTE)
+# CSS DARK / TV
 # ==============================
 def aplicar_css_tv(hide_sidebar=False):
     st.markdown(
         f"""
         <style>
-        /* reduz padding padrão (TV costuma cortar embaixo) */
+        .stApp {{
+            background-color: #0e1117;
+            color: #fafafa;
+        }}
+
+        [data-testid="stAppViewContainer"] {{
+            background-color: #0e1117;
+        }}
+
+        [data-testid="stMain"] {{
+            background-color: #0e1117;
+        }}
+
         .block-container {{
             padding-top: 0.6rem;
             padding-bottom: 1.2rem;
@@ -62,17 +73,39 @@ def aplicar_css_tv(hide_sidebar=False):
             max-width: 100%;
         }}
 
-        /* remove header e toolbar */
         header[data-testid="stHeader"] {{
             display: none;
         }}
+
         div[data-testid="stToolbar"] {{
             visibility: hidden;
             height: 0%;
             position: fixed;
         }}
 
-        /* opcional: some com sidebar pra virar painel */
+        [data-testid="stSidebar"] {{
+            background-color: #111827;
+        }}
+
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        .stDateInput > div > div,
+        .stSelectbox > div > div {{
+            background-color: #1f2937 !important;
+            color: #fafafa !important;
+            border-color: #374151 !important;
+        }}
+
+        label, .stMarkdown, .stText, p, h1, h2, h3, h4, h5, h6, span {{
+            color: #fafafa !important;
+        }}
+
+        .stAlert {{
+            background-color: #111827 !important;
+            color: #fafafa !important;
+            border: 1px solid #374151 !important;
+        }}
+
         {"section[data-testid='stSidebar']{display:none;}" if hide_sidebar else ""}
         </style>
         """,
@@ -80,11 +113,11 @@ def aplicar_css_tv(hide_sidebar=False):
     )
 
 # ==============================
-# ✅ Captura altura de tela (pra dimensionar pareto)
+# Captura altura de tela
 # ==============================
 def capturar_screen_height():
     if "screen_height" not in st.session_state:
-        st.session_state.screen_height = 1070  # padrão
+        st.session_state.screen_height = 1070
 
     st.markdown(
         """
@@ -100,19 +133,18 @@ def capturar_screen_height():
     )
 
 # ==============================
-# ✅ Helper Pareto (layout seguro pra TV)
+# Helper Pareto
 # ==============================
 def aplicar_layout_pareto(fig: go.Figure):
     screen_height = st.session_state.get("screen_height", 1080)
 
-    # altura proporcional + limites
     pareto_height = int(screen_height * 0.34)
     pareto_height = max(360, min(pareto_height, 520))
 
     fig.update_layout(
         height=pareto_height,
         autosize=True,
-        margin=dict(l=20, r=20, t=30, b=200),  # ✅ b maior evita corte na TV
+        margin=dict(l=20, r=20, t=30, b=200),
         yaxis=dict(showticklabels=False, showgrid=False),
         yaxis2=dict(
             overlaying="y",
@@ -121,26 +153,23 @@ def aplicar_layout_pareto(fig: go.Figure):
             showticklabels=False,
             showgrid=False
         ),
-        xaxis=dict(automargin=True),          # ✅ evita cortar eixo/labels
+        xaxis=dict(automargin=True),
         bargap=0.25,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="white")
     )
 
 # ==============================
-# ✅ NOVO: Cálculo correto de aprovação (por série)
-# Regra: reprova se houver QUALQUER "não conforme" em qualquer etapa da série
-# + mantém regra de reinspeção (se tiver "Sim", reprova)
-# + se existir coluna produto_reprovado: reprova se houver qualquer valor diferente de "não"
+# Cálculo de aprovação
 # ==============================
 def calcular_aprovacao(df_checks_filtrado: pd.DataFrame):
     if df_checks_filtrado is None or df_checks_filtrado.empty:
-        return 0.0, 0, 0  # aprovacao_perc, total_inspecionado, total_reprovados
+        return 0.0, 0, 0
 
     if "numero_serie" not in df_checks_filtrado.columns:
         return 0.0, 0, 0
 
-    # normalização segura de colunas usadas
     df = df_checks_filtrado.copy()
 
     if "status" in df.columns:
@@ -158,23 +187,26 @@ def calcular_aprovacao(df_checks_filtrado: pd.DataFrame):
     else:
         df["prod_rep_norm"] = ""
 
-    # define flags por linha
     df["is_nc"] = df["status_norm"].isin(["não conforme", "nao conforme"])
     df["has_reinspecao"] = df["reinspecao_norm"].isin(["sim", "s", "yes", "y", "true", "1"])
-    # produto_reprovado: aprovado só se for "não"
     df["is_prod_reprovado"] = False
+
     if "produto_reprovado" in df_checks_filtrado.columns:
-        df["is_prod_reprovado"] = df["prod_rep_norm"].ne("não") & df["prod_rep_norm"].ne("nao") & df["prod_rep_norm"].ne("") & df["prod_rep_norm"].ne("nan")
+        df["is_prod_reprovado"] = (
+            df["prod_rep_norm"].ne("não")
+            & df["prod_rep_norm"].ne("nao")
+            & df["prod_rep_norm"].ne("")
+            & df["prod_rep_norm"].ne("nan")
+        )
 
     aprovados = 0
     reprovados = 0
 
-    for serie, grp in df.groupby("numero_serie", dropna=True):
+    for _, grp in df.groupby("numero_serie", dropna=True):
         teve_reinspecao = grp["has_reinspecao"].any()
         teve_nc = grp["is_nc"].any()
         teve_prod_reprovado = grp["is_prod_reprovado"].any()
 
-        # ✅ regra final: se teve qualquer NC ou produto reprovado ou reinspeção, reprova
         aprovado = not (teve_reinspecao or teve_nc or teve_prod_reprovado)
 
         if aprovado:
@@ -209,6 +241,7 @@ def _load_checklists():
             break
         data_total.extend(dados)
         inicio += passo
+
     df = pd.DataFrame(data_total)
     if not df.empty and "data_hora" in df.columns:
         df["data_hora"] = pd.to_datetime(df["data_hora"], utc=True).dt.tz_convert(TZ)
@@ -238,7 +271,7 @@ def _load_apontamentos():
 
     df = pd.DataFrame(data_total)
 
-    if not df.empty:
+    if not df.empty and "data_hora" in df.columns:
         df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
 
     return df
@@ -372,6 +405,97 @@ def _load_checklists_manga_pnm():
     return df
 
 # ==============================
+# Funções Supabase para Solda
+# ==============================
+def carregar_apontamentos_solda(force_reload=False):
+    if not force_reload:
+        @st.cache_data(ttl=60)
+        def _carregar():
+            return _load_apontamentos_solda()
+        return _carregar()
+    else:
+        return _load_apontamentos_solda()
+
+def _load_apontamentos_solda():
+    data_total = []
+    inicio = 0
+    passo = 1000
+
+    while True:
+        response = supabase.table("apontamento.solda").select("*").range(inicio, inicio + passo - 1).execute()
+        dados = response.data
+        if not dados:
+            break
+        data_total.extend(dados)
+        inicio += passo
+
+    df = pd.DataFrame(data_total)
+
+    if not df.empty and "data_hora" in df.columns:
+        df["data_hora"] = pd.to_datetime(df["data_hora"], errors="coerce", utc=True).dt.tz_convert(TZ)
+
+    return df
+
+# ==============================
+# Grade horária da solda
+# ==============================
+def renderizar_grade_horaria_solda(df_solda: pd.DataFrame, meta_hora: dict):
+    realizado = {h.strftime("%H:%M"): 0 for h in meta_hora.keys()}
+
+    if not df_solda.empty and "data_hora" in df_solda.columns:
+        df_aux = df_solda.dropna(subset=["data_hora"]).copy()
+        df_aux["hora_ref"] = df_aux["data_hora"].dt.floor("h").dt.strftime("%H:%M")
+        contagem = df_aux.groupby("hora_ref").size().to_dict()
+
+        for h in realizado.keys():
+            realizado[h] = int(contagem.get(h, 0))
+
+    st.markdown("### 📊 Produção por Hora - Solda")
+
+    cols_top = st.columns(len(meta_hora))
+    for col, (hora_obj, meta) in zip(cols_top, meta_hora.items()):
+        hora = hora_obj.strftime("%H:%M")
+        with col:
+            st.markdown(f"""
+            <div style="
+                background:#51b84d;
+                border-radius:6px;
+                padding:10px 6px;
+                text-align:center;
+                min-height:78px;
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+            ">
+                <div style="font-size:15px;font-weight:700;color:white;">{hora}</div>
+                <div style="font-size:28px;font-weight:800;color:white;line-height:1.1;">{meta}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    cols_bottom = st.columns(len(meta_hora))
+    for col, hora_obj in zip(cols_bottom, meta_hora.keys()):
+        hora = hora_obj.strftime("%H:%M")
+        valor = realizado[hora]
+        with col:
+            st.markdown(f"""
+            <div style="
+                background:#000000;
+                border-radius:6px;
+                padding:10px 6px;
+                text-align:center;
+                min-height:78px;
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                border:1px solid #111827;
+            ">
+                <div style="font-size:15px;font-weight:700;color:white;">{hora}</div>
+                <div style="font-size:28px;font-weight:800;color:white;line-height:1.1;">{valor}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ==============================
 # Painel Dashboard (Produção Geral)
 # ==============================
 def painel_dashboard():
@@ -381,8 +505,8 @@ def painel_dashboard():
     capturar_screen_height()
 
     st.sidebar.markdown("### Filtro de Data")
-    data_inicio = st.sidebar.date_input("Data Início", hoje)
-    data_fim = st.sidebar.date_input("Data Fim", hoje)
+    data_inicio = st.sidebar.date_input("Data Início", hoje, key="geral_inicio")
+    data_fim = st.sidebar.date_input("Data Fim", hoje, key="geral_fim")
     force_reload = False
 
     df_apont = carregar_apontamentos(force_reload=force_reload)
@@ -401,10 +525,10 @@ def painel_dashboard():
         ]
 
     meta_hora = {
-        datetime.time(6,0):26, datetime.time(7,0):26, datetime.time(8,0):26,
-        datetime.time(9,0):26, datetime.time(10,0):26, datetime.time(11,0):6,
-        datetime.time(12,0):26, datetime.time(13,0):26, datetime.time(14,0):26,
-        datetime.time(15,0):12
+        datetime.time(6, 0): 26, datetime.time(7, 0): 26, datetime.time(8, 0): 26,
+        datetime.time(9, 0): 26, datetime.time(10, 0): 26, datetime.time(11, 0): 6,
+        datetime.time(12, 0): 26, datetime.time(13, 0): 26, datetime.time(14, 0): 26,
+        datetime.time(15, 0): 12
     }
 
     total_lidos = len(df_apont)
@@ -419,22 +543,25 @@ def painel_dashboard():
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    if not df_checks.empty and not df_apont.empty:
+    if (
+        not df_checks.empty
+        and not df_apont.empty
+        and "numero_serie" in df_checks.columns
+        and "numero_serie" in df_apont.columns
+    ):
         df_checks_filtrado = df_checks[
             df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())
         ]
     else:
         df_checks_filtrado = pd.DataFrame()
 
-    # ✅ NOVO: cálculo correto
     aprovacao_perc, total_inspecionado, total_reprovados = calcular_aprovacao(df_checks_filtrado)
 
-    # ✅ Totais no rodapé do card (Eixo / Manga / PNM)
     total_eixo = total_manga = total_pnm = 0
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
-        df_eixo = df_apont[df_apont["tipo_producao"].str.contains("EIXO|ESTEIRA", case=False, na=False)]
-        df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
-        df_pnm = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
+        df_eixo = df_apont[df_apont["tipo_producao"].astype(str).str.contains("EIXO|ESTEIRA", case=False, na=False)]
+        df_manga = df_apont[df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False)]
+        df_pnm = df_apont[df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False)]
         total_eixo = len(df_eixo)
         total_manga = len(df_manga)
         total_pnm = len(df_pnm)
@@ -481,20 +608,20 @@ def painel_dashboard():
         fig_oee = go.Figure(go.Indicator(
             mode="gauge+number",
             value=oee_percent,
-            number={'suffix': "%", 'font': {'size': 20}},
-            title={'text': "OEE", 'font': {'size': 14}},
+            number={'suffix': "%", 'font': {'size': 20, 'color': 'white'}},
+            title={'text': "OEE", 'font': {'size': 14, 'color': 'white'}},
             gauge={
-                'axis': {'range': [0, 100]},
+                'axis': {'range': [0, 100], 'tickcolor': 'white'},
                 'bar': {'color': "#1E90FF"},
                 'steps': [
                     {'range': [0, 60], 'color': "#FF4C4C"},
                     {'range': [60, 85], 'color': "#FFD700"},
                     {'range': [85, 100], 'color': "#4CAF50"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': 85}
+                'threshold': {'line': {'color': "white", 'width': 4}, 'thickness': 0.75, 'value': 85}
             }
         ))
-        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
+        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
@@ -610,14 +737,18 @@ def painel_dashboard_mola():
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    if not df_checks_mola.empty and not df_mola.empty:
+    if (
+        not df_checks_mola.empty
+        and not df_mola.empty
+        and "numero_serie" in df_checks_mola.columns
+        and "numero_serie" in df_mola.columns
+    ):
         df_checks_filtrado = df_checks_mola[
             df_checks_mola["numero_serie"].isin(df_mola["numero_serie"].unique())
         ]
     else:
         df_checks_filtrado = pd.DataFrame()
 
-    # ✅ NOVO: cálculo correto
     aprovacao_perc, total_inspecionado, total_reprovados = calcular_aprovacao(df_checks_filtrado)
 
     if meta_acumulada > 0:
@@ -665,20 +796,20 @@ def painel_dashboard_mola():
         fig_oee = go.Figure(go.Indicator(
             mode="gauge+number",
             value=oee_percent,
-            number={'suffix': "%", 'font': {'size': 20}},
-            title={'text': "OEE", 'font': {'size': 14}},
+            number={'suffix': "%", 'font': {'size': 20, 'color': 'white'}},
+            title={'text': "OEE", 'font': {'size': 14, 'color': 'white'}},
             gauge={
-                'axis': {'range': [0, 100]},
+                'axis': {'range': [0, 100], 'tickcolor': 'white'},
                 'bar': {'color': "#1E90FF"},
                 'steps': [
                     {'range': [0, 60], 'color': "#FF4C4C"},
                     {'range': [60, 85], 'color': "#FFD700"},
                     {'range': [85, 100], 'color': "#4CAF50"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': 85}
+                'threshold': {'line': {'color': "white", 'width': 4}, 'thickness': 0.75, 'value': 85}
             }
         ))
-        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)')
+        fig_oee.update_layout(height=altura, margin={'l':10,'r':10,'t':30,'b':10}, paper_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
             text=f"Perf: {performance_percent:.2f}% | Qualid: {aprovacao_perc:.2f}%",
@@ -791,22 +922,25 @@ def painel_dashboard_manga_pnm():
 
     atraso = max(meta_acumulada - total_lidos, 0)
 
-    if not df_checks.empty and not df_apont.empty:
+    if (
+        not df_checks.empty
+        and not df_apont.empty
+        and "numero_serie" in df_checks.columns
+        and "numero_serie" in df_apont.columns
+    ):
         df_checks_filtrado = df_checks[
-            df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())
+            df_checks["numero_serie"].isin(df_apoint["numero_serie"].unique())
         ]
     else:
         df_checks_filtrado = pd.DataFrame()
 
-    # ✅ NOVO: cálculo correto
     aprovacao_perc, total_inspecionado, total_reprovados = calcular_aprovacao(df_checks_filtrado)
 
-    # ✅ Totais separados (MANGA e PNM) para o rodapé do card
     total_manga = 0
     total_pnm = 0
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
-        df_manga = df_apont[df_apont["tipo_producao"].str.contains("MANGA", case=False, na=False)]
-        df_pnm = df_apont[df_apont["tipo_producao"].str.contains("PNM", case=False, na=False)]
+        df_manga = df_apont[df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False)]
+        df_pnm = df_apont[df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False)]
         total_manga = len(df_manga)
         total_pnm = len(df_pnm)
 
@@ -856,23 +990,24 @@ def painel_dashboard_manga_pnm():
         fig_oee = go.Figure(go.Indicator(
             mode="gauge+number",
             value=oee_percent,
-            number={'suffix': "%", 'font': {'size': 20}},
-            title={'text': "OEE", 'font': {'size': 14}},
+            number={'suffix': "%", 'font': {'size': 20, 'color': 'white'}},
+            title={'text': "OEE", 'font': {'size': 14, 'color': 'white'}},
             gauge={
-                'axis': {'range': [0, 100]},
+                'axis': {'range': [0, 100], 'tickcolor': 'white'},
                 'bar': {'color': "#1E90FF"},
                 'steps': [
                     {'range': [0, 60], 'color': "#FF4C4C"},
                     {'range': [60, 85], 'color': "#FFD700"},
                     {'range': [85, 100], 'color': "#4CAF50"}
                 ],
-                'threshold': {'line': {'color': "black", 'width': 4}, 'value': 85}
+                'threshold': {'line': {'color': "white", 'width': 4}, 'value': 85}
             }
         ))
         fig_oee.update_layout(
             height=altura,
             margin={'l': 10, 'r': 10, 't': 30, 'b': 10},
-            paper_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color="white")
         )
         fig_oee.add_annotation(
             x=0.5, y=-0.08, xref='paper', yref='paper',
@@ -907,7 +1042,9 @@ def painel_dashboard_manga_pnm():
                 x=pareto["Item"],
                 y=pareto["Quantidade"],
                 text=pareto["Quantidade"],
-                textposition="auto"
+                textposition="auto",
+                textfont=dict(color="white"),
+                marker_color="lightskyblue"
             )
             fig.add_scatter(
                 x=pareto["Item"],
@@ -915,7 +1052,10 @@ def painel_dashboard_manga_pnm():
                 yaxis="y2",
                 mode="lines+markers+text",
                 text=[f"{v:.1f}%" for v in pareto["%"]],
-                textposition="top center"
+                textposition="top center",
+                textfont=dict(color="white"),
+                line=dict(color="white"),
+                marker=dict(color="white")
             )
 
             aplicar_layout_pareto(fig)
@@ -931,29 +1071,158 @@ def painel_dashboard_manga_pnm():
         st.warning("⚠️ Nenhum checklist disponível para gerar o Pareto Manga/PNM.")
 
 # ==============================
+# Painel Dashboard (Solda)
+# ==============================
+def painel_dashboard_solda():
+    hoje = datetime.datetime.now(TZ).date()
+    hora_atual = datetime.datetime.now(TZ)
+
+    capturar_screen_height()
+
+    st.sidebar.markdown("### Filtro de Data - Solda")
+    data_inicio = st.sidebar.date_input("Data Início (Solda)", hoje, key="solda_inicio")
+    data_fim = st.sidebar.date_input("Data Fim (Solda)", hoje, key="solda_fim")
+    force_reload = False
+
+    df_solda = carregar_apontamentos_solda(force_reload=force_reload)
+
+    if not df_solda.empty:
+        df_solda = df_solda[
+            (df_solda["data_hora"].dt.date >= data_inicio) &
+            (df_solda["data_hora"].dt.date <= data_fim)
+        ].copy()
+
+    meta_hora = {
+        datetime.time(6, 0): 22,
+        datetime.time(7, 0): 22,
+        datetime.time(8, 0): 22,
+        datetime.time(9, 0): 22,
+        datetime.time(10, 0): 22,
+        datetime.time(11, 0): 4,
+        datetime.time(12, 0): 18,
+        datetime.time(13, 0): 22,
+        datetime.time(14, 0): 22,
+        datetime.time(15, 0): 12,
+    }
+
+    total_lidos = len(df_solda)
+    meta_dia = sum(meta_hora.values())
+    meta_acumulada = 0
+
+    for h, m in meta_hora.items():
+        horario_fim = datetime.datetime.combine(hoje, h) + datetime.timedelta(hours=1)
+        if horario_fim.tzinfo is None:
+            horario_fim = TZ.localize(horario_fim)
+        if hora_atual >= horario_fim:
+            meta_acumulada += m
+
+    atraso = max(meta_acumulada - total_lidos, 0)
+
+    total_lotes = 0
+    total_ops = 0
+
+    if not df_solda.empty:
+        if "lote" in df_solda.columns:
+            total_lotes = df_solda["lote"].astype(str).replace("nan", pd.NA).dropna().nunique()
+        if "op" in df_solda.columns:
+            total_ops = df_solda["op"].astype(str).replace("nan", pd.NA).dropna().nunique()
+
+    performance_fraction = (total_lidos / meta_acumulada) if meta_acumulada > 0 else 1
+    performance_fraction = max(min(performance_fraction, 1), 0)
+    performance_percent = performance_fraction * 100
+
+    col1, col2, col3, col4 = st.columns(4)
+    altura = 180
+    fonte = "18px"
+
+    with col1:
+        st.markdown(f"""
+        <div style="background-color:#2b6cb0;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+            <h3 style="color:white;font-size:{fonte}">TOTAL REGISTROS</h3>
+            <h1 style="color:white;font-size:{fonte}">{total_lidos}</h1>
+            <p style="color:#E3E3E3;font-size:{fonte}">
+                Lotes: {total_lotes} | OPs: {total_ops}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+        <div style="background-color:#6b46c1;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+            <h3 style="color:white;font-size:{fonte}">META DO DIA</h3>
+            <h1 style="color:white;font-size:{fonte}">{meta_dia}</h1>
+            <p style="color:#E3E3E3;font-size:{fonte}">
+                Meta acumulada: {meta_acumulada}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        cor = "#c53030" if atraso > 0 else "#38a169"
+        texto = f"Atraso: {atraso}" if atraso > 0 else "Dentro da Meta"
+        st.markdown(f"""
+        <div style="background-color:{cor};height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+            <h3 style="color:white;font-size:{fonte}">STATUS</h3>
+            <h1 style="color:white;font-size:{fonte}">{texto}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col4:
+        fig_perf = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=performance_percent,
+            number={'suffix': "%", 'font': {'size': 20, 'color': 'white'}},
+            title={'text': "PERFORMANCE", 'font': {'size': 14, 'color': 'white'}},
+            gauge={
+                'axis': {'range': [0, 100], 'tickcolor': 'white'},
+                'bar': {'color': "#1E90FF"},
+                'steps': [
+                    {'range': [0, 60], 'color': "#FF4C4C"},
+                    {'range': [60, 85], 'color': "#FFD700"},
+                    {'range': [85, 100], 'color': "#4CAF50"}
+                ],
+                'threshold': {'line': {'color': "white", 'width': 4}, 'thickness': 0.75, 'value': 85}
+            }
+        ))
+        fig_perf.update_layout(
+            height=altura,
+            margin={'l': 10, 'r': 10, 't': 30, 'b': 10},
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color="white")
+        )
+        fig_perf.add_annotation(
+            x=0.5, y=-0.08, xref='paper', yref='paper',
+            text=f"Real: {total_lidos} | Meta acum.: {meta_acumulada}",
+            showarrow=False, font={'size': 12, 'color': '#E3E3E3'}
+        )
+        st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False, "responsive": True})
+
+    renderizar_grade_horaria_solda(df_solda, meta_hora)
+
+# ==============================
 # Main
 # ==============================
 def main():
-    # ✅ aplica CSS pra TV
-    aplicar_css_tv(hide_sidebar=True)
+    aplicar_css_tv(hide_sidebar=False)
 
-    # 🔹 Atualiza automaticamente a cada 1 minuto (60.000 ms)
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=60000, key="dashboard_refresh")
 
     params = st.query_params
 
     if "painel" in params:
-        painel_param = params["painel"].lower()
+        painel_param = str(params["painel"]).lower()
     else:
         painel_param = "geral"
 
-    painel_opcoes = ["Produção Geral", "Mola", "Manga/PNM"]
+    painel_opcoes = ["Produção Geral", "Mola", "Manga/PNM", "Solda"]
 
     if painel_param == "mola":
         painel_default = "Mola"
     elif painel_param == "manga_pnm":
         painel_default = "Manga/PNM"
+    elif painel_param == "solda":
+        painel_default = "Solda"
     else:
         painel_default = "Produção Geral"
 
@@ -968,6 +1237,8 @@ def main():
         st.query_params["painel"] = "mola"
     elif painel == "Manga/PNM":
         st.query_params["painel"] = "manga_pnm"
+    elif painel == "Solda":
+        st.query_params["painel"] = "solda"
     else:
         st.query_params["painel"] = "geral"
 
@@ -975,15 +1246,16 @@ def main():
         painel_dashboard()
     elif painel == "Mola":
         painel_dashboard_mola()
-    else:
+    elif painel == "Manga/PNM":
         painel_dashboard_manga_pnm()
+    else:
+        painel_dashboard_solda()
 
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
     st.markdown(
-        f"<p style='color:#555;text-align:center;'>Atualizado às <b>{hora}</b></p>",
+        f"<p style='color:#BDBDBD;text-align:center;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
     )
 
 if __name__ == "__main__":
     main()
-
