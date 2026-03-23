@@ -929,7 +929,7 @@ def painel_dashboard_manga_pnm():
         and "numero_serie" in df_apont.columns
     ):
         df_checks_filtrado = df_checks[
-            df_checks["numero_serie"].isin(df_apoint["numero_serie"].unique())
+            df_checks["numero_serie"].isin(df_apont["numero_serie"].unique())
         ]
     else:
         df_checks_filtrado = pd.DataFrame()
