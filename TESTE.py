@@ -1148,7 +1148,7 @@ def painel_dashboard_solda():
 
     with col2:
         st.markdown(f"""
-        <div style="background-color:#6b46c1;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
+        <div style="background-color:#38a169;height:{altura}px;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:20px;text-align:center;padding:10px;">
             <h3 style="color:white;font-size:{fonte}">META DO DIA</h3>
             <h1 style="color:white;font-size:{fonte}">{meta_dia}</h1>
             <p style="color:#E3E3E3;font-size:{fonte}">
