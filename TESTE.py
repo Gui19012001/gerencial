@@ -709,18 +709,18 @@ def painel_dashboard_mola():
         ]
 
     meta_hora = {
-        datetime.time(6, 0): 13,
-        datetime.time(7, 0): 13,
-        datetime.time(8, 0): 13,
-        datetime.time(9, 0): 13,
-        datetime.time(10, 0): 13,
-        datetime.time(11, 0): 9,
+        datetime.time(6, 0): 14,
+        datetime.time(7, 0): 14,
+        datetime.time(8, 0): 14,
+        datetime.time(9, 0): 14,
+        datetime.time(10, 0): 14,
+        datetime.time(11, 0): 14,
         datetime.time(12, 0): 0,
-        datetime.time(13, 0): 10,
-        datetime.time(14, 0): 13,
+        datetime.time(13, 0): 14,
+        datetime.time(14, 0): 14,
         datetime.time(15, 0): 8,
         datetime.time(16, 0): 14,
-        datetime.time(17, 0): 1,
+        datetime.time(17, 0): 14,
     }
 
     total_lidos = len(df_mola)
