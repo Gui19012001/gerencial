@@ -897,15 +897,15 @@ def painel_dashboard_manga_pnm():
         ]
 
     meta_hora = {
-        datetime.time(6, 0): 3,
-        datetime.time(7, 0): 3,
-        datetime.time(8, 0): 3,
-        datetime.time(9, 0): 3,
-        datetime.time(10, 0): 3,
+        datetime.time(6, 0): 4,
+        datetime.time(7, 0): 4,
+        datetime.time(8, 0): 4,
+        datetime.time(9, 0): 4,
+        datetime.time(10, 0): 4,
         datetime.time(11, 0): 0,
-        datetime.time(12, 0): 3,
-        datetime.time(13, 0): 3,
-        datetime.time(14, 0): 3,
+        datetime.time(12, 0): 4,
+        datetime.time(13, 0): 4,
+        datetime.time(14, 0): 4,
         datetime.time(15, 0): 2,
     }
 
