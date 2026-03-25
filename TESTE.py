@@ -525,10 +525,10 @@ def painel_dashboard():
         ]
 
     meta_hora = {
-        datetime.time(6, 0): 20, datetime.time(7, 0): 20, datetime.time(8, 0): 20,
-        datetime.time(9, 0): 20, datetime.time(10, 0): 20, datetime.time(11, 0): 0,
-        datetime.time(12, 0): 22, datetime.time(13, 0): 22, datetime.time(14, 0): 22,
-        datetime.time(15, 0): 12
+        datetime.time(6, 0): 26, datetime.time(7, 0): 26, datetime.time(8, 0): 26,
+        datetime.time(9, 0): 26, datetime.time(10, 0): 26, datetime.time(11, 0): 0,
+        datetime.time(12, 0): 26, datetime.time(13, 0): 26, datetime.time(14, 0): 26,
+        datetime.time(15, 0): 13
     }
 
     total_lidos = len(df_apont)
