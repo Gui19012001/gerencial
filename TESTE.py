@@ -25,7 +25,6 @@ try:
     AUTORELOAD_AVAILABLE = True
 except ImportError:
     AUTORELOAD_AVAILABLE = False
-
 # ==============================
 # Carregar variáveis de ambiente
 # ==============================
